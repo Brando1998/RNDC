@@ -4,7 +4,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import UnexpectedAlertPresentException, TimeoutException
 from datetime import datetime, timedelta
 import time
-from utils.logger import registrar_log_remesa
+from _utils.logger import registrar_log_remesa
 
 
 def navegar_a_formulario(driver):
