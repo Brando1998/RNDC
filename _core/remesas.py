@@ -126,10 +126,10 @@ def guardar_y_manejar_alertas(driver, codigo, actualizar_estado_callback, campos
     # Manejo del error CRE308
     if "CRE308" in texto_alerta:
         try:
-            actualizar_estado_callback(f"⏳ Error CRE308 en {codigo}. Reintentando con fecha de descargue +3 días...")
+            actualizar_estado_callback(f"⏳ Error CRE308 en {codigo}. Reintentando con fecha de descargue +5 días...")
 
             # Aumentar 3 días a la fecha de descargue en los campos y recargar en el formulario
-            nueva_fecha = (datetime.strptime(campos[6][1], "%d/%m/%Y") + timedelta(days=3)).strftime("%d/%m/%Y")
+            nueva_fecha = (datetime.strptime(campos[6][1], "%d/%m/%Y") + timedelta(days=5)).strftime("%d/%m/%Y")
             for i, (campo_id, valor) in enumerate(campos):
                 if "FECHALLEGADADESCARGUE" in campo_id or "FECHAENTRADADESCARGUE" in campo_id or "FECHASALIDADESCARGUE" in campo_id:
                     campos[i] = (campo_id, nueva_fecha)
