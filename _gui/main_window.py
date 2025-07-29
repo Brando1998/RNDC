@@ -40,7 +40,18 @@ class AppGUI:
 
         Button(self.frame_remesas, text="Ejecutar llenado automático", command=self.ejecutar_remesas).pack(pady=10)
         Button(self.frame_remesas, text="⬅ Volver al menú", command=self.mostrar_frame_inicio).pack()
-        # MANIFIESTOS ...
+        # MANIFIESTOS
+        Label(self.frame_manifiestos, text="Manifiestos - Subir archivo TXT").pack(pady=10)
+        Button(self.frame_manifiestos, text="Seleccionar Archivo TXT", command=self.seleccionar_archivo_manifiestos).pack(pady=5)
+        self.etiqueta_archivo_manifiestos = Label(self.frame_manifiestos, text="")
+        self.etiqueta_archivo_manifiestos.pack()
+
+        self.etiqueta_estado_manifiestos = Label(self.frame_manifiestos, text="", fg="blue")
+        self.etiqueta_estado_manifiestos.pack(pady=5)
+
+        Button(self.frame_manifiestos, text="Ejecutar llenado automático", command=self.ejecutar_manifiestos).pack(pady=10)
+        Button(self.frame_manifiestos, text="⬅ Volver al menú", command=self.mostrar_frame_inicio).pack()
+
 
     def mostrar_frame_inicio(self):
         self.frame_remesas.pack_forget()
@@ -77,3 +88,23 @@ class AppGUI:
         self.ventana.update()  # Refresca la ventana inmediatamente
         pass
 
+
+    #Manifiestos
+    def seleccionar_archivo_manifiestos(self):
+        archivo = filedialog.askopenfilename(filetypes=[("Archivos TXT", "*.txt")])
+        if archivo:
+            self.codigos_manifiestos, nombre = cargar_codigos_txt(archivo, 8)
+            self.etiqueta_archivo_manifiestos.config(text=f"📄 {nombre}")
+            self.etiqueta_estado_manifiestos.config(text=f"✅ Se cargaron {len(self.codigos_manifiestos)} manifiestos.")
+
+    def ejecutar_manifiestos(self):
+        driver = crear_driver()
+        ejecutar_manifiestos(driver, self.codigos_manifiestos, self.actualizar_estado_manifiestos)
+        messagebox.showinfo(
+            "Proceso completado",
+            "Los manifiestos fueron procesados. Revisa el log de errores para más detalles."
+        )
+
+    def actualizar_estado_manifiestos(self, mensaje):
+        self.etiqueta_estado_manifiestos.config(text=mensaje)
+        self.ventana.update()

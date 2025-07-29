@@ -3,6 +3,8 @@ from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 from datetime import datetime
 import time
+from _utils.logger import registrar_log_remesa
+
 
 def hacer_login(driver):
     driver.get("https://rndc.mintransporte.gov.co/MenuPrincipal/tabid/204/language/es-MX/Default.aspx?returnurl=%2fMenuPrincipal%2ftabid%2f204%2flanguage%2fes-MX%2fDefault.aspx")
@@ -28,8 +30,10 @@ def navegar_a_formulario(driver):
     )
 
 def llenar_formulario_manifiesto(driver, codigo):
-    observacion_texto = """NO SE ASUME NINGUNA RESPONSABILIDAD SOBRE LA MERCANCIA TRANSPORTADA, POLIZA, PESO VALORES DE FLETES E IMPUESTOS LOS ASUME DIRECTAMENTE EL CONDUCTOR, EL VEHICULO LLEVA EL PESO PERMITIDO Y LA MERCANCIA ES LICITA"""
-    fecha_actual = datetime.today().strftime("%d/%m/%Y")
+    from datetime import datetime, timedelta
+
+    # observacion_texto = """NO SE ASUME NINGUNA RESPONSABILIDAD SOBRE LA MERCANCIA TRANSPORTADA, POLIZA, PESO VALORES DE FLETES E IMPUESTOS LOS ASUME DIRECTAMENTE EL CONDUCTOR, EL VEHICULO LLEVA EL PESO PERMITIDO Y LA MERCANCIA ES LICITA"""
+    campos_utilizados = []
 
     # Buscar manifiesto
     input_manifiesto = driver.find_element(By.ID, "dnn_ctr396_CumplirManifiesto_NUMMANIFIESTOCARGA")
@@ -38,8 +42,9 @@ def llenar_formulario_manifiesto(driver, codigo):
     input_manifiesto.send_keys("\t")
     time.sleep(1)
 
-    # Seleccionar tipo de cumplimiento
+    # Tipo de cumplimiento
     Select(driver.find_element(By.ID, "dnn_ctr396_CumplirManifiesto_NOMTIPOCUMPLIDOMANIFIESTO")).select_by_visible_text("Cumplido Normal")
+    campos_utilizados.append(("NOMTIPOCUMPLIDOMANIFIESTO", "Cumplido Normal"))
 
     # Campos con cero
     campos_cero = [
@@ -52,32 +57,40 @@ def llenar_formulario_manifiesto(driver, codigo):
         campo_id = f"dnn_ctr396_CumplirManifiesto_{campo}"
         driver.find_element(By.ID, campo_id).clear()
         driver.find_element(By.ID, campo_id).send_keys("0")
+        campos_utilizados.append((campo, "0"))
 
-    # Fecha actual en múltiples campos relacionados con la entrega
-    campos_fecha = [
-        "FECHAENTREGADOCUMENTOS",
-        "FECHALLEGADACARGUE",
-        "FECHAENTRADACARGUE",
-        "FECHASALIDACARGUE",
-        "FECHALLEGADADESCARGUE",
-        "FECHAENTRADADESCARGUE",
-        "FECHASALIDADESCARGUE",
-    ]
-    for campo in campos_fecha:
-        campo_id = f"dnn_ctr396_CumplirManifiesto_{campo}"
-        driver.find_element(By.ID, campo_id).clear()
-        driver.find_element(By.ID, campo_id).send_keys(fecha_actual)
+    # Obtener y calcular fecha entrega
+    fecha_expedicion_id = "dnn_ctr396_CumplirManifiesto_FECHAEXPEDICIONMANIFIESTO"
+    fecha_expedicion_str = driver.find_element(By.ID, fecha_expedicion_id).get_attribute("value").strip()
 
-    # Observaciones
-    obs_id = "dnn_ctr396_CumplirManifiesto_OBSERVACIONES"
-    driver.find_element(By.ID, obs_id).clear()
-    driver.find_element(By.ID, obs_id).send_keys(observacion_texto)
+    try:
+        # Aseguramos el formato de fecha
+        fecha_expedicion = datetime.strptime(fecha_expedicion_str, "%d/%m/%Y")
+        fecha_entrega = fecha_expedicion + timedelta(days=5)
+        fecha_entrega_str = fecha_entrega.strftime("%d/%m/%Y")
+
+        # Insertamos la nueva fecha
+        fecha_entrega_id = "dnn_ctr396_CumplirManifiesto_FECHAENTREGADOCUMENTOS"
+        driver.find_element(By.ID, fecha_entrega_id).clear()
+        driver.find_element(By.ID, fecha_entrega_id).send_keys(fecha_entrega_str)
+        campos_utilizados.append(("FECHAENTREGADOCUMENTOS", fecha_entrega_str))
+
+    except Exception as e:
+        raise Exception(f"No se pudo calcular fecha de entrega: {e}")
+
+    # Observaciones (opcional, puedes descomentar si se requiere)
+    # obs_id = "dnn_ctr396_CumplirManifiesto_OBSERVACIONES"
+    # driver.find_element(By.ID, obs_id).clear()
+    # driver.find_element(By.ID, obs_id).send_keys(observacion_texto)
+    # campos_utilizados.append(("OBSERVACIONES", observacion_texto))
 
     time.sleep(1)
+    return campos_utilizados
 
-def guardar_y_manejar_alertas(driver, codigo, actualizar_estado_callback):
+
+def guardar_y_manejar_alertas(driver, codigo, actualizar_estado_callback, campos):
     try:
-        guardar_btn = driver.find_element(By.ID, "id_boton_guardar")
+        guardar_btn = driver.find_element(By.ID, "dnn_ctr396_CumplirManifiesto_btGuardar")
         guardar_btn.click()
 
         WebDriverWait(driver, 10).until(EC.alert_is_present())
@@ -85,9 +98,12 @@ def guardar_y_manejar_alertas(driver, codigo, actualizar_estado_callback):
         mensaje_alerta = alerta.text
         alerta.accept()
 
+        registrar_log_remesa(codigo, mensaje_alerta, campos)
         actualizar_estado_callback(f"✅ Manifiesto {codigo}: {mensaje_alerta}")
     except Exception as e:
+        registrar_log_remesa(codigo, f"Error al guardar: {e}", campos)
         actualizar_estado_callback(f"⚠️ Error al guardar manifiesto {codigo}: {e}")
+
 
 def ejecutar_manifiestos(driver, codigos, actualizar_estado_callback):
     try:
@@ -98,9 +114,10 @@ def ejecutar_manifiestos(driver, codigos, actualizar_estado_callback):
             actualizar_estado_callback(f"Procesando manifiesto {codigo}...")
             navegar_a_formulario(driver)
             try:
-                llenar_formulario_manifiesto(driver, codigo)
-                guardar_y_manejar_alertas(driver, codigo, actualizar_estado_callback)
+                campos = llenar_formulario_manifiesto(driver, codigo)
+                guardar_y_manejar_alertas(driver, codigo, actualizar_estado_callback, campos)
             except Exception as e:
+                registrar_log_remesa(codigo, f"Excepción: {e}", campos if 'campos' in locals() else [])
                 actualizar_estado_callback(f"❌ Error en manifiesto {codigo}: {e}")
                 navegar_a_formulario(driver)
                 continue

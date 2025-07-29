@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 
 # Generar ruta con nombre dinámico por fecha-hora
-def obtener_ruta_log(nombre_base="log_remesas"):
+def obtener_ruta_log(nombre_base="log_"):
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     carpeta = "logs"
     os.makedirs(carpeta, exist_ok=True)
