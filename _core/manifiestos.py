@@ -89,21 +89,55 @@ def llenar_formulario_manifiesto(driver, codigo):
 
 
 def guardar_y_manejar_alertas(driver, codigo, actualizar_estado_callback, campos):
-    try:
-        guardar_btn = driver.find_element(By.ID, "dnn_ctr396_CumplirManifiesto_btGuardar")
-        guardar_btn.click()
+    flete_id = "dnn_ctr396_CumplirManifiesto_VALORADICIONALFLETE"
+    incremento = 100_000
+    max_intentos = 20  # evitar bucles infinitos
+    intentos = 0
 
-        WebDriverWait(driver, 10).until(EC.alert_is_present())
-        alerta = driver.switch_to.alert
-        mensaje_alerta = alerta.text
-        alerta.accept()
+    while intentos < max_intentos:
+        try:
+            guardar_btn = driver.find_element(By.ID, "dnn_ctr396_CumplirManifiesto_btGuardar")
+            guardar_btn.click()
 
-        registrar_log_remesa(codigo, mensaje_alerta, campos)
-        actualizar_estado_callback(f"✅ Manifiesto {codigo}: {mensaje_alerta}")
-    except Exception as e:
-        registrar_log_remesa(codigo, f"Error al guardar: {e}", campos)
-        actualizar_estado_callback(f"⚠️ Error al guardar manifiesto {codigo}: {e}")
+            WebDriverWait(driver, 3).until(EC.alert_is_present())
+            alerta = driver.switch_to.alert
+            mensaje_alerta = alerta.text
+            alerta.accept()
 
+            # Si la alerta indica error conocido, incrementar y reintentar
+            if "error" in mensaje_alerta.lower() or "no se puede" in mensaje_alerta.lower():
+                intentos += 1
+                actualizar_estado_callback(f"⚠️ Alerta en manifiesto {codigo}: {mensaje_alerta}. Incrementando flete...")
+
+                campo_flete = driver.find_element(By.ID, flete_id)
+                valor_actual = int(campo_flete.get_attribute("value").replace(".", "").replace(",", "") or "0")
+                nuevo_valor = valor_actual + incremento
+
+                campo_flete.clear()
+                campo_flete.send_keys(str(nuevo_valor))
+
+                # Actualiza registro en campos
+                for i, (nombre, _) in enumerate(campos):
+                    if nombre == "VALORADICIONALFLETE":
+                        campos[i] = ("VALORADICIONALFLETE", str(nuevo_valor))
+                        break
+                else:
+                    campos.append(("VALORADICIONALFLETE", str(nuevo_valor)))
+
+                time.sleep(1)
+                continue
+            else:
+                # Se asumirá que fue exitoso
+                registrar_log_remesa(codigo, mensaje_alerta, campos)
+                actualizar_estado_callback(f"✅ Manifiesto {codigo}: {mensaje_alerta}")
+                return
+        except Exception as e:
+            registrar_log_remesa(codigo, f"Error inesperado al guardar: {e}", campos)
+            actualizar_estado_callback(f"⚠️ Error inesperado al guardar manifiesto {codigo}: {e}")
+            return
+
+    registrar_log_remesa(codigo, "❌ Demasiados intentos al guardar (flete ajustado múltiples veces)", campos)
+    actualizar_estado_callback(f"❌ Manifiesto {codigo}: demasiados intentos, falló al guardar.")
 
 def ejecutar_manifiestos(driver, codigos, actualizar_estado_callback):
     try:

@@ -5,6 +5,8 @@ from _core.manifiestos import ejecutar_manifiestos
 from _utils.archivos import cargar_codigos_txt
 from tkinter import messagebox
 from _utils.logger import RUTA_LOG_REMESAS
+import threading
+
 
 
 class AppGUI:
@@ -17,40 +19,128 @@ class AppGUI:
         self.frame_remesas = Frame(self.ventana)
         self.frame_manifiestos = Frame(self.ventana)
 
+        self.pausa_event = threading.Event()
+        self.pausa_event.set()  # El proceso inicia sin pausa
+        self.cancelar_flag = False
+        self.thread_remesas = None
         self.setup_gui()
+
+        self.actualizar_estilo_botones("default")
 
     def setup_gui(self):
         self.ventana.title("Automatizador RNDC")
-        self.ventana.geometry("500x400")
+        self.ventana.geometry("520x420")
 
         # INICIO
-        Label(self.frame_inicio, text="Seleccione el tipo de proceso").pack(pady=20)
-        Button(self.frame_inicio, text="Remesas", command=self.mostrar_frame_remesas).pack(pady=10)
-        Button(self.frame_inicio, text="Manifiestos", command=self.mostrar_frame_manifiestos).pack(pady=10)
+        Label(self.frame_inicio, text="Seleccione el tipo de proceso", font=("Helvetica", 14, "bold")).pack(pady=20)
+        Button(self.frame_inicio, text="Remesas", width=20, command=self.mostrar_frame_remesas).pack(pady=10)
+        Button(self.frame_inicio, text="Manifiestos", width=20, command=self.mostrar_frame_manifiestos).pack(pady=10)
         self.frame_inicio.pack()
 
         # REMESAS
-        Label(self.frame_remesas, text="Remesas - Subir archivo TXT").pack(pady=10)
-        Button(self.frame_remesas, text="Seleccionar Archivo TXT", command=self.seleccionar_archivo_remesas).pack(pady=5)
-        self.etiqueta_archivo_remesas = Label(self.frame_remesas, text="")  # <--- ESTA ETIQUETA
+        titulo = Label(self.frame_remesas, text="📦 Procesamiento de Remesas", font=("Helvetica", 13, "bold"))
+        titulo.pack(pady=(10, 15))
+
+        frame_remesas_contenido = Frame(self.frame_remesas)
+        frame_remesas_contenido.pack(pady=5)
+
+        # Cargar archivo
+        seccion_archivo = Frame(frame_remesas_contenido)
+        seccion_archivo.pack(pady=5)
+        Button(seccion_archivo, text="📂 Seleccionar Archivo TXT", command=self.seleccionar_archivo_remesas).pack()
+        self.etiqueta_archivo_remesas = Label(seccion_archivo, text="", fg="gray")
         self.etiqueta_archivo_remesas.pack()
 
-        self.etiqueta_estado_remesas = Label(self.frame_remesas, text="", fg="blue")  # <--- ESTA TAMBIÉN
+        # Estado
+        self.etiqueta_estado_remesas = Label(frame_remesas_contenido, text="", fg="blue")
         self.etiqueta_estado_remesas.pack(pady=5)
 
-        Button(self.frame_remesas, text="Ejecutar llenado automático", command=self.ejecutar_remesas).pack(pady=10)
-        Button(self.frame_remesas, text="⬅ Volver al menú", command=self.mostrar_frame_inicio).pack()
+        self.etiqueta_archivo_manifiestos = None
+        self.etiqueta_estado_manifiestos = None
+
+        # Ejecutar
+        Button(frame_remesas_contenido, text="▶ Ejecutar llenado automático", command=self.ejecutar_remesas, bg="#4CAF50", fg="white", width=30).pack(pady=10)
+
+        # Control
+        frame_botones_control = Frame(frame_remesas_contenido)
+        frame_botones_control.pack(pady=10)
+
+        self.boton_pausar = Button(frame_botones_control, text="⏸ Pausar", command=self.pausar_remesas, width=10)
+        self.boton_pausar.grid(row=0, column=0, padx=5)
+
+        self.boton_continuar = Button(frame_botones_control, text="▶ Continuar", command=self.continuar_remesas, width=10)
+        self.boton_continuar.grid(row=0, column=1, padx=5)
+
+        self.boton_cancelar = Button(frame_botones_control, text="⛔ Cancelar", command=self.cancelar_remesas, width=10)
+        self.boton_cancelar.grid(row=0, column=2, padx=5)
+
+        # Volver
+        Button(self.frame_remesas, text="⬅ Volver al menú", command=self.mostrar_frame_inicio).pack(pady=15)
+
         # MANIFIESTOS
-        Label(self.frame_manifiestos, text="Manifiestos - Subir archivo TXT").pack(pady=10)
-        Button(self.frame_manifiestos, text="Seleccionar Archivo TXT", command=self.seleccionar_archivo_manifiestos).pack(pady=5)
-        self.etiqueta_archivo_manifiestos = Label(self.frame_manifiestos, text="")
+        titulo_manifiestos = Label(self.frame_manifiestos, text="🚛 Procesamiento de Manifiestos", font=("Helvetica", 13, "bold"))
+        titulo_manifiestos.pack(pady=(10, 15))
+
+        frame_manifiestos_contenido = Frame(self.frame_manifiestos)
+        frame_manifiestos_contenido.pack(pady=5)
+
+        # Cargar archivo
+        seccion_archivo_manifiestos = Frame(frame_manifiestos_contenido)
+        seccion_archivo_manifiestos.pack(pady=5)
+        Button(seccion_archivo_manifiestos, text="📂 Seleccionar Archivo TXT", command=self.seleccionar_archivo_manifiestos).pack()
+        self.etiqueta_archivo_manifiestos = Label(seccion_archivo_manifiestos, text="", fg="gray")
         self.etiqueta_archivo_manifiestos.pack()
 
-        self.etiqueta_estado_manifiestos = Label(self.frame_manifiestos, text="", fg="blue")
+        # Estado
+        self.etiqueta_estado_manifiestos = Label(frame_manifiestos_contenido, text="", fg="blue")
         self.etiqueta_estado_manifiestos.pack(pady=5)
 
-        Button(self.frame_manifiestos, text="Ejecutar llenado automático", command=self.ejecutar_manifiestos).pack(pady=10)
-        Button(self.frame_manifiestos, text="⬅ Volver al menú", command=self.mostrar_frame_inicio).pack()
+        # Ejecutar
+        Button(frame_manifiestos_contenido, text="▶ Ejecutar llenado automático", command=self.ejecutar_manifiestos, bg="#4CAF50", fg="white", width=30).pack(pady=10)
+
+        # Volver
+        Button(self.frame_manifiestos, text="⬅ Volver al menú", command=self.mostrar_frame_inicio).pack(pady=15)
+
+
+
+
+    def pausar_remesas(self):
+        self.pausa_event.clear()
+        self.etiqueta_estado_remesas.config(text="⏸ Proceso pausado.")
+        self.actualizar_estilo_botones(estado="pausado")
+
+    def continuar_remesas(self):
+        self.pausa_event.set()
+        self.etiqueta_estado_remesas.config(text="▶ Continuando proceso...")
+        self.actualizar_estilo_botones(estado="ejecutando")
+
+    def cancelar_remesas(self):
+        self.cancelar_flag = True
+        self.pausa_event.set()
+        self.etiqueta_estado_remesas.config(text="❌ Cancelando proceso...")
+        self.actualizar_estilo_botones(estado="cancelado")
+    
+    def actualizar_estilo_botones(self, estado):
+        if estado == "pausado":
+            self.boton_pausar.config(relief="sunken", bg="orange", fg="white")
+            self.boton_continuar.config(relief="raised", bg="lightgray", fg="black")
+            self.boton_cancelar.config(bg="lightgray", fg="black")
+
+        elif estado == "ejecutando":
+            self.boton_pausar.config(relief="raised", bg="lightgray", fg="black")
+            self.boton_continuar.config(relief="sunken", bg="green", fg="white")
+            self.boton_cancelar.config(bg="lightgray", fg="black")
+
+        elif estado == "cancelado":
+            self.boton_pausar.config(relief="raised", bg="lightgray", fg="black")
+            self.boton_continuar.config(relief="raised", bg="lightgray", fg="black")
+            self.boton_cancelar.config(bg="red", fg="white")
+
+        else:  # estado por defecto
+            self.boton_pausar.config(relief="raised", bg="lightgray", fg="black")
+            self.boton_continuar.config(relief="raised", bg="lightgray", fg="black")
+            self.boton_cancelar.config(bg="lightgray", fg="black")
+
 
 
     def mostrar_frame_inicio(self):
@@ -74,13 +164,16 @@ class AppGUI:
             self.etiqueta_estado_remesas.config(text=f"✅ Se cargaron {len(self.codigos_remesas)} remesas.")
 
     def ejecutar_remesas(self):
+        self.cancelar_flag = False
+        self.pausa_event.set()  # Asegura que el proceso no está pausado
         driver = crear_driver()
-        ejecutar_remesas(driver, self.codigos_remesas, self.actualizar_estado_remesas)
-        # Mostramos el mensaje con la ruta del CSV generado
-        messagebox.showinfo(
-            "Proceso completado",
-            f"El archivo de errores se guardó en:\n{RUTA_LOG_REMESAS}"
+
+        self.thread_remesas = threading.Thread(
+            target=ejecutar_remesas,
+            args=(driver, self.codigos_remesas, self.actualizar_estado_remesas, self.pausa_event, lambda: self.cancelar_flag)
         )
+        self.thread_remesas.start()
+
 
 
     def actualizar_estado_remesas(self, mensaje):

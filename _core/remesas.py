@@ -5,6 +5,7 @@ from selenium.common.exceptions import UnexpectedAlertPresentException, TimeoutE
 from datetime import datetime, timedelta
 import time
 from _utils.logger import registrar_log_remesa
+from tkinter import messagebox
 
 
 def navegar_al_formulario_remesa(driver):
@@ -188,7 +189,7 @@ def guardar_y_manejar_alertas(driver, codigo, actualizar_estado_callback, campos
         actualizar_estado_callback(f"❌ Remesa {codigo} falló: {texto_alerta}")
 
 
-def ejecutar_remesas(driver, codigos, actualizar_estado_callback):
+def ejecutar_remesas(driver, codigos, actualizar_estado_callback, pausa_event, cancelar_func):
     try:
         driver.get("https://rndc.mintransporte.gov.co/MenuPrincipal/tabid/204/language/es-MX/Default.aspx?returnurl=%2fMenuPrincipal%2ftabid%2f204%2flanguage%2fes-MX%2fDefault.aspx")
         WebDriverWait(driver, 10).until(
@@ -205,7 +206,12 @@ def ejecutar_remesas(driver, codigos, actualizar_estado_callback):
         navegar_al_formulario_remesa(driver)
 
         for codigo in codigos:
+            if cancelar_func():
+                driver.quit()
+                actualizar_estado_callback("⛔ Proceso cancelado por el usuario.")
+                break
             actualizar_estado_callback(f"Procesando remesa {codigo}...")
+            pausa_event.wait()
             navegar_al_formulario_remesa(driver)
             try:
                 campos = llenar_formulario_remesa(driver, codigo)
@@ -220,7 +226,14 @@ def ejecutar_remesas(driver, codigos, actualizar_estado_callback):
                 #     input("🔧 Presiona Enter para continuar...")
                 navegar_al_formulario_remesa(driver)
                 continue
-
-        actualizar_estado_callback("✅ Todas las remesas completadas.")
+            actualizar_estado_callback("✅ Todas las remesas completadas.")
     except Exception as e:
         actualizar_estado_callback(f"❌ Error general llenando remesas: {e}")
+    finally:
+        driver.quit()
+        if not cancelar_func():
+            messagebox.showinfo(
+                "Proceso completado",
+                "El proceso de llenado de remesas ha finalizado. Revisa el log de errores para más detalles."
+            )
+        actualizar_estado_callback("✅ Todas las remesas completadas.")
