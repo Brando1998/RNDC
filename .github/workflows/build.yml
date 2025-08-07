@@ -2,8 +2,8 @@ name: Build EXE for Windows
 
 on:
   push:
-    branches: [main]   # o la rama que uses
-  workflow_dispatch:    # para ejecutarlo manualmente también
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
   build-windows:
@@ -27,8 +27,14 @@ jobs:
     - name: Build executable
       run: pyinstaller --onefile --add-data "drivers\\chromedriver.exe;drivers" app.py
 
+    - name: List dist contents
+      run: dir dist
+
+    - name: Compress executable
+      run: powershell Compress-Archive -Path dist/app.exe -DestinationPath dist/app.zip
+
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: ejecutable-windows
-        path: dist/app.exe
+        path: dist/app.zip
