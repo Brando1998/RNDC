@@ -28,7 +28,7 @@ jobs:
       run: pyinstaller --onefile app.py --add-data "drivers\\chromedriver.exe;drivers" app.py
 
     - name: Upload artifact
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: ejecutable-windows
         path: dist/app.exe
