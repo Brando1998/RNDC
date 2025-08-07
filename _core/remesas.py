@@ -22,7 +22,7 @@ def llenar_formulario_remesa(driver, remesa_id):
     campo_remesa.clear()
     campo_remesa.send_keys(remesa_id)
     campo_remesa.send_keys("\t")
-    time.sleep(2)
+    time.sleep(1)
 
     mensaje_sistema = driver.find_element(By.ID, "dnn_ctr396_CumplirRemesa_MENSAJE").get_attribute("value")
     if "no ha sido emitida o ya está cerrada" in mensaje_sistema:
