@@ -112,7 +112,7 @@ def guardar_y_manejar_alertas(driver, codigo, actualizar_estado_callback, campos
             # print(f"⚠️ Alerta detectada: {texto}")
             return texto
         except TimeoutException:
-            # print("⏱ No hubo alerta después del clic")
+            print("⏱ No hubo alerta después del clic")
 
         # 2. Esperar si se redirige correctamente (aparece botón "Nuevo")
         try:
