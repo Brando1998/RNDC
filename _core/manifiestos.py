@@ -83,149 +83,125 @@ def llenar_formulario_manifiesto(driver, codigo):
     # time.sleep(1)
     return campos_utilizados
 
-
 def guardar_y_manejar_alertas(driver, codigo, actualizar_estado_callback, campos):
-    def intentar_guardado():
-        # print(f"Intentando guardar manifiesto {codigo}...")
-        guardar_id = "dnn_ctr396_CumplirManifiesto_btGuardar"
-        nuevo_id = "dnn_ctr396_CumplirManifiestoNew_btNuevo"
+    MAX_REINTENTOS = 18
+    INCREMENTO_FLETE = 100000
+    valor_flete_actual = 0  # Empieza en 0
 
+    def modificar_flete_y_motivo(valor):
+        flete_id = "dnn_ctr396_CumplirManifiesto_VALORADICIONALFLETE"
+        motivo_flete_id = "dnn_ctr396_CumplirManifiesto_NOMMOTIVOVALORADICIONAL"
+        
         try:
-            boton_guardar = WebDriverWait(driver, 3).until(
-                EC.element_to_be_clickable((By.ID, guardar_id))
-            )
-            driver.execute_script("arguments[0].scrollIntoView(true);", boton_guardar)
-            time.sleep(0.3)
-            driver.execute_script("arguments[0].click();", boton_guardar)
-            # print("✅ Click ejecutado en el botón guardar")
+            # Esperar a que la página esté lista
+            WebDriverWait(driver, 10).until(
+                lambda d: d.execute_script("return document.readyState") == "complete")
+            
+            navegar_a_formulario(driver)
+            campos = llenar_formulario_manifiesto(driver, codigo)
+
+            # Esperar a que la página esté lista
+            WebDriverWait(driver, 10).until(
+                lambda d: d.execute_script("return document.readyState") == "complete")
+            
+            # Actualizar valor flete
+            flete_elemento = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.ID, flete_id)))
+            flete_elemento.clear()
+            flete_elemento.send_keys(str(valor))
+            flete_elemento.send_keys(Keys.TAB)  # Forzar actualización
+            
+            # Pequeña pausa para estabilización
+            time.sleep(0.5)
+            
+            # Solo establecer motivo si el valor > 0
+            if valor > 0:
+                # Esperar y seleccionar el motivo
+                motivo_elemento = WebDriverWait(driver, 10).until(
+                    EC.element_to_be_clickable((By.ID, motivo_flete_id)))
+                Select(motivo_elemento).select_by_value("R")
+                motivo_elemento.send_keys(Keys.TAB)
+                # Pequeña pausa para estabilización
+                time.sleep(0.5)
+                
+            # # Actualizar registro de campos
+            # for i, (nombre, _) in enumerate(campos):
+            #     if nombre == "VALORADICIONALFLETE":
+            #         campos[i] = (nombre, str(valor))
+            #         break
+                    
+            return True
         except Exception as e:
-            # print(f"⚠️ No se pudo hacer clic en el botón guardar: {e}")
-            driver.save_screenshot("error_click_guardar.png")
-            return "Botón guardar no clickeable"
+            registrar_log_remesa(codigo, f"Error al modificar flete/motivo (valor={valor}): {str(e)}", campos)
+            return False
 
-        # 1. Esperar si aparece una alerta
+    for reintento in range(MAX_REINTENTOS + 1):
         try:
-            WebDriverWait(driver, 3).until(EC.alert_is_present())
-            alerta = driver.switch_to.alert
-            texto = alerta.text
-            alerta.accept()
-            # print(f"⚠️ Alerta detectada: {texto}")
-            return texto
-        except TimeoutException:
-            print("⏱ No hubo alerta después del clic")
+            # Solo modificar flete en reintentos > 0
+            if reintento > 0:
+                valor_flete_actual += INCREMENTO_FLETE
+                if not modificar_flete_y_motivo(valor_flete_actual):
+                    continue
+                
+                actualizar_estado_callback(f"🔄 Reintento {reintento} para {codigo} | Flete: ${valor_flete_actual:,}")
 
-        # 2. Esperar si se redirige correctamente (aparece botón "Nuevo")
-        try:
-            WebDriverWait(driver, 5).until(
-                EC.presence_of_element_located((By.ID, nuevo_id))
-            )
-            # print("✅ Redirección detectada (botón Nuevo encontrado)")
-            return "GUARDADO_OK"
-        except TimeoutException:
-            # print("❌ No hubo alerta ni redirección después del clic")
-            driver.save_screenshot("no_alerta_ni_redireccion.png")
-            return "Error: No hubo alerta ni redirección (no se guardó)"
-
-    def reescribir_campos(campos_actualizados):
-        return
-
-    def manejar_cma045_cma145():
-        # print(f"Error CMA045/CMA145 detectado en manifiesto {codigo}. Intentando corregir...")
-        try:
-            actualizar_estado_callback(f"⏳ Error CMA045 en {codigo}. Reintentando aumentando flete...")
-            # print(f"⏳ Error CMA045 en {codigo}. Reintentando aumentando flete...")
-            flete_id = "dnn_ctr396_CumplirManifiesto_VALORADICIONALFLETE"
-            motivo_flete_id = "dnn_ctr396_CumplirManifiesto_NOMMOTIVOVALORADICIONAL"
-            motivo_flete_value = "R"
-            incremento_flete = 100_000
-            max_intentos = 20
-
-            for intento in range(max_intentos):
+            # Intentar guardar
+            max_click_attempts = 3
+            for attempt in range(max_click_attempts):
                 try:
-                    flete_elemento = WebDriverWait(driver, 5).until(
-                        EC.presence_of_element_located((By.ID, flete_id))
-                    )
-                    driver.execute_script("arguments[0].scrollIntoView(true);", flete_elemento)
-                    time.sleep(0.3)
-
-                    # Asegurarse de que el campo sea interactuable
-                    WebDriverWait(driver, 5).until(
-                        EC.element_to_be_clickable((By.ID, flete_id))
-                    )
-
-                    flete_actual = int(flete_elemento.get_attribute("value").replace(".", "").replace(",", "") or "0")
-                    nuevo_flete = flete_actual + incremento_flete
-                    flete_elemento.clear()
-                    flete_elemento.send_keys(str(nuevo_flete))
-                    flete_elemento.send_keys(Keys.TAB)
-                    time.sleep(0.5)  # Esperar que el cambio se registre antes de seguir
-
-
-                    # print(f"Manifiesto {codigo}. incrementando a {nuevo_flete} en intento {intento + 1} de {max_intentos}...")
-
-                    Select(driver.find_element(By.ID, motivo_flete_id)).select_by_value(motivo_flete_value)
-
-                    # Actualizar campos
-                    actualizado = False
-                    for i, (nombre, _) in enumerate(campos):
-                        if nombre == "VALORADICIONALFLETE":
-                            campos[i] = ("VALORADICIONALFLETE", str(nuevo_flete))
-                            actualizado = True
-                            break
-                    if not actualizado:
-                        campos.append(("VALORADICIONALFLETE", str(nuevo_flete)))
-
-                    texto_alerta = intentar_guardado()
-                    # print(f"Texto de alerta tras incremento: {texto_alerta}")
-                    # Verificamos si se completó
-                    try:
-                        WebDriverWait(driver, 5).until(
-                            EC.presence_of_element_located((By.ID, "dnn_ctr396_CumplirManifiestoNew_btNuevo"))
-                        )
-                        actualizar_estado_callback(f"✅ Manifiesto {codigo} completado con flete {nuevo_flete}.")
-                        # print(f"Manifiesto {codigo} completado con flete {nuevo_flete}.")
-                        registrar_log_remesa(codigo, "Guardado exitoso tras CMA045", campos)
-                        return
-                    except Exception:
-                        # Si no aparece el botón, asumimos que falló y reintentamos
-                        registrar_log_remesa(codigo, texto_alerta or "Sin alerta y sin confirmación", campos)
-                        # print("Sin confirmación de guardado, reintentando...")
-                        # time.sleep(1)
-                        continue
-
+                    guardar_btn = WebDriverWait(driver, 10).until(
+                        EC.element_to_be_clickable((By.ID, "dnn_ctr396_CumplirManifiesto_btGuardar")))
+                    driver.execute_script("arguments[0].click();", guardar_btn)
+                    time.sleep(1)
+                    break  # Si no hay excepción, sal del bucle
                 except Exception as e:
-                    # print(f"Error en intento {intento + 1}: {e}")
-                    registrar_log_remesa(codigo, f"Error en intento {intento + 1}: {e}", campos)
-                    # time.sleep(1)
+                    if attempt == max_click_attempts - 1:
+                        raise
+                    print(f"Reintento {attempt + 1} de click fallido. Volviendo a intentar...")
+            # Esperar un momento para posibles alertas
+            time.sleep(1)
+            
+            # Manejar posibles alertas
+            try:
+                alerta = WebDriverWait(driver, 3).until(EC.alert_is_present())
+                texto_alerta = alerta.text
+                alerta.accept()
+                
+                # Pequeña pausa después de aceptar alerta
+                time.sleep(2)
+                
+                registrar_log_remesa(codigo, texto_alerta, campos)
+                
+                # Si es un error que podemos manejar, continuamos
+                if "CMA045" in texto_alerta or "CMA145" in texto_alerta:
+                    continue
+                else:
+                    actualizar_estado_callback(f"❌ Error no manejable en {codigo}: {texto_alerta}")
+                    return False
+                    
+            except TimeoutException:
+                # No hubo alerta - verificar si se guardó correctamente
+                try:
+                    WebDriverWait(driver, 10).until(
+                        EC.presence_of_element_located((By.ID, "dnn_ctr396_CumplirManifiestoNew_btNuevo")))
+                    actualizar_estado_callback(f"✅ {codigo} completado | Flete: ${valor_flete_actual:,}")
+                    return True
+                except TimeoutException:
+                    # --- INICIO: PAUSA PARA REVISIÓN MANUAL ---
+                    print(f"\n⚠️ PAUSA MANUAL - Reintento {reintento} para {codigo}")
+                    print("Motivo: No hubo alerta, pero el guardado no se completó.")
+                    registrar_log_remesa(codigo, "Error: Sin alerta pero no se completó", campos)
+                    input("Presiona ENTER para continuar con el siguiente reintento...")
 
-            # Si se llega al final sin éxito
-            actualizar_estado_callback(f"❌ Manifiesto {codigo} no pudo completarse tras {max_intentos} intentos de incremento de flete.")
-            registrar_log_remesa(codigo, "Fallo tras múltiples intentos por CMA045/CMA145", campos)
+                    continue
 
         except Exception as e:
-            # print(f"Error general al actualizar estado: {e}")
-            registrar_log_remesa(codigo, f"Fallo en reintento CMA045/CMA145: {e}", campos)
+            registrar_log_remesa(codigo, f"Error en reintento {reintento}: {str(e)}", campos)
+            continue
 
-
-    # Flujo principal:
-
-    texto_alerta = intentar_guardado()
-
-    if texto_alerta is None:
-        # print(f"Manifiesto {codigo} guardado sin alertas.")
-        WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.ID, "dnn_ctr396_CumplirManifiestoNew_btNuevo"))
-        )
-        actualizar_estado_callback(f"✅ Manifiesto {codigo} completado correctamente.")
-        return
-
-    registrar_log_remesa(codigo, texto_alerta, campos)
-
-    if "CMA045" in texto_alerta or "CMA145" in texto_alerta:
-        manejar_cma045_cma145()
-    else:
-        actualizar_estado_callback(f"❌ Manifiesto {codigo} falló: {texto_alerta}")
-
+    # Si se agotan los reintentos
+    actualizar_estado_callback(f"❌ Fallo definitivo en {codigo} | Último flete: ${valor_flete_actual:,}")
+    return False
 
 def ejecutar_manifiestos(driver, codigos, actualizar_estado_callback):
     try:
