@@ -97,12 +97,20 @@ class AppGUI:
 
         # Ejecutar
         Button(frame_manifiestos_contenido, text="▶ Ejecutar llenado automático", command=self.ejecutar_manifiestos, bg="#4CAF50", fg="white", width=30).pack(pady=10)
+        frame_botones_control_manifiestos = Frame(frame_manifiestos_contenido)
+        frame_botones_control_manifiestos.pack(pady=10)
+
+        self.boton_pausar_manifiestos = Button(frame_botones_control_manifiestos, text="⏸ Pausar", command=self.pausar_manifiestos, width=10)
+        self.boton_pausar_manifiestos.grid(row=0, column=0, padx=5)
+
+        self.boton_continuar_manifiestos = Button(frame_botones_control_manifiestos, text="▶ Continuar", command=self.continuar_manifiestos, width=10)
+        self.boton_continuar_manifiestos.grid(row=0, column=1, padx=5)
+
+        self.boton_cancelar_manifiestos = Button(frame_botones_control_manifiestos, text="⛔ Cancelar", command=self.cancelar_manifiestos, width=10)
+        self.boton_cancelar_manifiestos.grid(row=0, column=2, padx=5)
 
         # Volver
         Button(self.frame_manifiestos, text="⬅ Volver al menú", command=self.mostrar_frame_inicio).pack(pady=15)
-
-
-
 
     def pausar_remesas(self):
         self.pausa_event.clear()
@@ -140,6 +148,44 @@ class AppGUI:
             self.boton_pausar.config(relief="raised", bg="lightgray", fg="black")
             self.boton_continuar.config(relief="raised", bg="lightgray", fg="black")
             self.boton_cancelar.config(bg="lightgray", fg="black")
+
+    def pausar_manifiestos(self):
+        self.pausa_event.clear()
+        self.etiqueta_estado_manifiestos.config(text="⏸ Proceso pausado.")
+        self.actualizar_estilo_botones_manifiestos(estado="pausado")
+
+    def continuar_manifiestos(self):
+        self.pausa_event.set()
+        self.etiqueta_estado_manifiestos.config(text="▶ Continuando proceso...")
+        self.actualizar_estilo_botones_manifiestos(estado="ejecutando")
+
+    def cancelar_manifiestos(self):
+        self.cancelar_flag = True
+        self.pausa_event.set()
+        self.etiqueta_estado_manifiestos.config(text="❌ Cancelando proceso...")
+        self.actualizar_estilo_botones_manifiestos(estado="cancelado")
+
+    def actualizar_estilo_botones_manifiestos(self, estado):
+        if estado == "pausado":
+            self.boton_pausar_manifiestos.config(relief="sunken", bg="orange", fg="white")
+            self.boton_continuar_manifiestos.config(relief="raised", bg="lightgray", fg="black")
+            self.boton_cancelar_manifiestos.config(bg="lightgray", fg="black")
+
+        elif estado == "ejecutando":
+            self.boton_pausar_manifiestos.config(relief="raised", bg="lightgray", fg="black")
+            self.boton_continuar_manifiestos.config(relief="sunken", bg="green", fg="white")
+            self.boton_cancelar_manifiestos.config(bg="lightgray", fg="black")
+
+        elif estado == "cancelado":
+            self.boton_pausar_manifiestos.config(relief="raised", bg="lightgray", fg="black")
+            self.boton_continuar_manifiestos.config(relief="raised", bg="lightgray", fg="black")
+            self.boton_cancelar_manifiestos.config(bg="red", fg="white")
+
+        else:  # estado por defecto
+            self.boton_pausar_manifiestos.config(relief="raised", bg="lightgray", fg="black")
+            self.boton_continuar_manifiestos.config(relief="raised", bg="lightgray", fg="black")
+            self.boton_cancelar_manifiestos.config(bg="lightgray", fg="black")
+
 
 
 
@@ -191,12 +237,15 @@ class AppGUI:
             self.etiqueta_estado_manifiestos.config(text=f"✅ Se cargaron {len(self.codigos_manifiestos)} manifiestos.")
 
     def ejecutar_manifiestos(self):
+        self.cancelar_flag = False
+        self.pausa_event.set()
         driver = crear_driver()
-        ejecutar_manifiestos(driver, self.codigos_manifiestos, self.actualizar_estado_manifiestos)
-        messagebox.showinfo(
-            "Proceso completado",
-            "Los manifiestos fueron procesados. Revisa el log de errores para más detalles."
+
+        self.thread_manifiestos = threading.Thread(
+            target=ejecutar_manifiestos,
+            args=(driver, self.codigos_manifiestos, self.actualizar_estado_manifiestos, self.pausa_event, lambda: self.cancelar_flag)
         )
+        self.thread_manifiestos.start()
 
     def actualizar_estado_manifiestos(self, mensaje):
         self.etiqueta_estado_manifiestos.config(text=mensaje)

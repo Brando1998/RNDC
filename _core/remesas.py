@@ -164,7 +164,64 @@ def guardar_y_manejar_alertas(driver, codigo, actualizar_estado_callback, campos
         except Exception as e:
             actualizar_estado_callback(f"❌ Error al reintentar CRE309 en remesa {codigo}: {e}")
             registrar_log_remesa(codigo, f"Fallo en reintento CRE309: {e}", campos)
+    
+    def manejar_cre270():
+        try:
+            actualizar_estado_callback(f"⏳ Error CRE270 en {codigo}. Reintentando con fechas basadas en fecha de expedición...")
+            
+            # Obtener la fecha de expedición del formulario
+            fecha_expedicion_element = driver.find_element(By.ID, "dnn_ctr396_CumplirRemesa_FECHAEMISION")
+            fecha_expedicion_str = fecha_expedicion_element.get_attribute("value")
+            
+            # Parsear la fecha de expedición
+            fecha_expedicion = datetime.strptime(fecha_expedicion_str, "%d/%m/%Y")
+            
+            # Calcular fechas para cargue (misma fecha de expedición)
+            fecha_cargue = fecha_expedicion.strftime("%d/%m/%Y")
+            
+            # Calcular fechas para descargue (3 días después de expedición)
+            fecha_descargue = (fecha_expedicion + timedelta(days=3)).strftime("%d/%m/%Y")
+            
+            # Calcular fecha de salida descargue (1 hora después de llegada descargue)
+            fecha_salida_descargue = fecha_descargue  # Misma fecha en este caso
+            
+            # Mantener las horas originales de los campos
+            hora_cargue = campos[3][1]  # HORALLEGADACARGUEREMESA
+            hora_salida_cargue = campos[5][1]  # HORASALIDACARGUEREMESA
+            hora_llegada_descargue = campos[9][1]  # HORALLEGADADESCARGUECUMPLIDO
+            hora_salida_descargue = campos[11][1]  # HORASALIDADESCARGUECUMPLIDO
+            
+            # Crear nuevos campos modificados
+            campos_modificados = [
+                ("FECHALLEGADACARGUE", fecha_cargue),
+                ("FECHAENTRADACARGUE", fecha_cargue),
+                ("FECHASALIDACARGUE", fecha_cargue),
+                ("HORALLEGADACARGUEREMESA", hora_cargue),
+                ("HORAENTRADACARGUEREMESA", hora_cargue),
+                ("HORASALIDACARGUEREMESA", hora_salida_cargue),
+                ("FECHALLEGADADESCARGUE", fecha_descargue),
+                ("FECHAENTRADADESCARGUE", fecha_descargue),
+                ("FECHASALIDADESCARGUE", fecha_salida_descargue),
+                ("HORALLEGADADESCARGUECUMPLIDO", hora_llegada_descargue),
+                ("HORAENTRADADESCARGUECUMPLIDO", hora_llegada_descargue),
+                ("HORASALIDADESCARGUECUMPLIDO", hora_salida_descargue),
+            ]
+            
+            reescribir_campos(campos_modificados)
 
+            texto_alerta_reintento = intentar_guardado()
+            if texto_alerta_reintento is None:
+                WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.ID, "dnn_ctr396_CumplirRemesaNew_btNuevo"))
+                )
+                registrar_log_remesa(codigo, "Reintento exitoso tras CRE270", campos_modificados)
+                actualizar_estado_callback(f"✅ Remesa {codigo} completada correctamente tras reintento CRE270.")
+            else:
+                registrar_log_remesa(codigo, f"Reintento fallido CRE270: {texto_alerta_reintento}", campos_modificados)
+                actualizar_estado_callback(f"❌ Remesa {codigo} falló incluso tras reintento CRE270: {texto_alerta_reintento}")
+        except Exception as e:
+            actualizar_estado_callback(f"❌ Error al reintentar CRE270 en remesa {codigo}: {e}")
+            registrar_log_remesa(codigo, f"Fallo en reintento CRE270: {e}", campos)
     # --- Proceso principal ---
     texto_alerta = intentar_guardado()
 
@@ -185,6 +242,8 @@ def guardar_y_manejar_alertas(driver, codigo, actualizar_estado_callback, campos
         manejar_cre308()
     elif "CRE309" in texto_alerta:
         manejar_cre309()
+    elif "CRE270" in texto_alerta:
+        manejar_cre270()
     else:
         actualizar_estado_callback(f"❌ Remesa {codigo} falló: {texto_alerta}")
 

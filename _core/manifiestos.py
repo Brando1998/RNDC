@@ -203,13 +203,20 @@ def guardar_y_manejar_alertas(driver, codigo, actualizar_estado_callback, campos
     actualizar_estado_callback(f"❌ Fallo definitivo en {codigo} | Último flete: ${valor_flete_actual:,}")
     return False
 
-def ejecutar_manifiestos(driver, codigos, actualizar_estado_callback):
+def ejecutar_manifiestos(driver, codigos, actualizar_estado_callback, pausa_event, cancelar_func):
     try:
         hacer_login(driver)
         navegar_a_formulario(driver)
 
         for codigo in codigos:
+            if cancelar_func():
+                driver.quit()
+                actualizar_estado_callback("⛔ Proceso cancelado por el usuario.")
+                break
+                
             actualizar_estado_callback(f"Procesando manifiesto {codigo}...")
+            pausa_event.wait()  # Espera si el proceso está pausado
+            
             navegar_a_formulario(driver)
             try:
                 campos = llenar_formulario_manifiesto(driver, codigo)
@@ -223,3 +230,10 @@ def ejecutar_manifiestos(driver, codigos, actualizar_estado_callback):
         actualizar_estado_callback("✅ Todos los manifiestos completados.")
     except Exception as e:
         actualizar_estado_callback(f"❌ Error general llenando manifiestos: {e}")
+    finally:
+        driver.quit()
+        if not cancelar_func():
+            messagebox.showinfo(
+                "Proceso completado",
+                "Los manifiestos fueron procesados. Revisa el log de errores para más detalles."
+            )
