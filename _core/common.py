@@ -45,11 +45,10 @@ def hacer_login(driver):
         driver.find_element(By.ID, "dnn_ctr580_FormLogIn_btIngresar").click()
         
         # Esperar a que el login sea exitoso (verificando presencia del menú)
+        # Este es el ID correcto que funciona en el sistema RNDC
         WebDriverWait(driver, TIMEOUT_MEDIO).until(
-            EC.presence_of_element_located((By.ID, "dnn_dnnUSER_cmdEdit"))
+            EC.presence_of_element_located((By.ID, "tddnn_dnnSOLPARTMENU_ctldnnSOLPARTMENU120"))
         )
-        
-        time.sleep(1)  # Pequeña pausa para estabilidad
         
     except Exception as e:
         raise Exception(f"Error en login: {str(e)}")
@@ -83,7 +82,6 @@ def navegar_a_remesas(driver):
     WebDriverWait(driver, TIMEOUT_MEDIO).until(
         EC.presence_of_element_located((By.ID, "dnn_ctr396_CumplirRemesa_CONSECUTIVOREMESA"))
     )
-    time.sleep(0.5)  # Pequeña pausa para estabilidad
 
 
 def navegar_a_manifiestos(driver):
@@ -98,7 +96,6 @@ def navegar_a_manifiestos(driver):
     WebDriverWait(driver, TIMEOUT_MEDIO).until(
         EC.presence_of_element_located((By.ID, "dnn_ctr396_CumplirManifiesto_NUMMANIFIESTOCARGA"))
     )
-    time.sleep(0.5)  # Pequeña pausa para estabilidad
 
 
 def verificar_conexion(driver):
