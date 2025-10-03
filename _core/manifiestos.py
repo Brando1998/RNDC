@@ -9,12 +9,17 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.keys import Keys
 from datetime import datetime, timedelta
-from tkinter import messagebox
 import time
 import os
 import json
 from _utils.logger import registrar_log_remesa, obtener_logger, TipoProceso
 from _core.navegador import crear_driver
+from _utils.esperas import (
+    esperar_pagina_cargada,
+    esperar_elemento_interactivo,
+    esperar_valor_campo_cargado,
+    esperar_ajax_completo
+)
 
 
 # ============================================================================
@@ -142,8 +147,10 @@ def llenar_formulario_manifiesto(driver, codigo):
     input_codigo = driver.find_element(By.ID, "dnn_ctr396_CumplirManifiesto_NUMMANIFIESTOCARGA")
     input_codigo.clear()
     input_codigo.send_keys(codigo)
-    input_codigo.send_keys("\t")
-    time.sleep(0.5)
+    input_codigo.send_keys(Keys.TAB)
+    
+    # OPTIMIZACIÓN: Esperar a que la página cargue los datos automáticamente
+    esperar_ajax_completo(driver, timeout=5)
 
     # Verificar mensajes de error del sistema
     mensaje_error = driver.find_element(By.ID, "dnn_ctr396_CumplirManifiesto_MSGERROR").get_attribute("value").strip()
@@ -193,37 +200,38 @@ def guardar_y_manejar_alertas(driver, codigo, actualizar_estado_callback, campos
         motivo_flete_id = "dnn_ctr396_CumplirManifiesto_NOMMOTIVOVALORADICIONAL"
         
         try:
-            # Esperar a que la página esté lista
-            WebDriverWait(driver, 10).until(
-                lambda d: d.execute_script("return document.readyState") == "complete"
-            )
+            # OPTIMIZACIÓN: Esperar a que la página esté completamente cargada
+            esperar_pagina_cargada(driver, timeout=10)
             
             navegar_a_formulario(driver)
             campos = llenar_formulario_manifiesto(driver, codigo)
 
-            # Esperar a que la página esté lista
-            WebDriverWait(driver, 10).until(
-                lambda d: d.execute_script("return document.readyState") == "complete"
-            )
+            # OPTIMIZACIÓN: Esperar a que la página esté lista nuevamente
+            esperar_pagina_cargada(driver, timeout=10)
             
-            # Actualizar valor flete
-            flete_elemento = WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable((By.ID, flete_id))
-            )
+            # OPTIMIZACIÓN: Esperar a que el campo de flete sea interactivo
+            flete_elemento = esperar_elemento_interactivo(driver, By.ID, flete_id, timeout=10)
+            if not flete_elemento:
+                raise Exception(f"Campo {flete_id} no está interactivo")
+            
             flete_elemento.clear()
             flete_elemento.send_keys(str(valor))
             flete_elemento.send_keys(Keys.TAB)
             
-            time.sleep(0.5)
+            # OPTIMIZACIÓN: Esperar a que se procese el cambio
+            esperar_ajax_completo(driver, timeout=3)
             
             # Solo establecer motivo si el valor > 0
             if valor > 0:
-                motivo_elemento = WebDriverWait(driver, 10).until(
-                    EC.element_to_be_clickable((By.ID, motivo_flete_id))
-                )
+                motivo_elemento = esperar_elemento_interactivo(driver, By.ID, motivo_flete_id, timeout=10)
+                if not motivo_elemento:
+                    raise Exception(f"Campo {motivo_flete_id} no está interactivo")
+                
                 Select(motivo_elemento).select_by_value("R")
                 motivo_elemento.send_keys(Keys.TAB)
-                time.sleep(0.5)
+                
+                # OPTIMIZACIÓN: Esperar a que se procese
+                esperar_ajax_completo(driver, timeout=3)
                     
             return True
         except Exception as e:
@@ -262,7 +270,9 @@ def guardar_y_manejar_alertas(driver, codigo, actualizar_estado_callback, campos
                         EC.element_to_be_clickable((By.ID, "dnn_ctr396_CumplirManifiesto_btGuardar"))
                     )
                     driver.execute_script("arguments[0].click();", guardar_btn)
-                    time.sleep(1)
+                    
+                    # OPTIMIZACIÓN: Esperar a que se procese el click
+                    esperar_ajax_completo(driver, timeout=2)
                     break
                 except Exception as e:
                     if attempt == max_click_attempts - 1:

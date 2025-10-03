@@ -14,6 +14,14 @@ import os
 from _utils.logger import registrar_log_remesa, obtener_logger, TipoProceso
 from _core.common import hacer_login, navegar_a_remesas, TIMEOUT_CORTO, TIMEOUT_MEDIO
 
+from _utils.esperas import (
+    esperar_pagina_cargada,
+    esperar_elemento_interactivo,
+    esperar_valor_campo_cargado,
+    esperar_ajax_completo,
+    esperar_campo_editable
+)
+
 
 # ============================================================================
 # CONSTANTES Y LOGGER
@@ -62,7 +70,7 @@ def verificar_servidor_disponible(crear_driver_func):
     try:
         driver = crear_driver_func()
         driver.get("https://rndc.mintransporte.gov.co")
-        time.sleep(2)
+        esperar_pagina_cargada(driver, timeout=10)
         
         if "rndc" in driver.current_url.lower():
             return True, driver
@@ -239,7 +247,7 @@ def llenar_campo_seguro(driver, campo_id, valor, timeout=5):
             EC.element_to_be_clickable((By.ID, campo_id))
         )
         elemento.clear()
-        time.sleep(0.1)  # Pequeña pausa después de limpiar
+        esperar_ajax_completo(driver, timeout=1)
         elemento.send_keys(valor)
         return True
     except Exception as e:
@@ -305,7 +313,7 @@ def llenar_formulario_remesa(driver, remesa_id):
     campo_remesa.clear()
     campo_remesa.send_keys(remesa_id)
     campo_remesa.send_keys("\t")
-    time.sleep(1)
+    esperar_ajax_completo(driver, timeout=5)
     
     mensaje_sistema = driver.find_element(By.ID, "dnn_ctr396_CumplirRemesa_MENSAJE").get_attribute("value")
     if ERROR_REMESA_NO_EMITIDA in mensaje_sistema:
