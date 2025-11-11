@@ -11,7 +11,7 @@ from tkinter import messagebox
 VERSION_ACTUAL = "1.0.0"  # Actualiza esto con cada release
 
 # URL del último release en GitHub
-GITHUB_API_URL = "https://api.github.com/repos/Brando1998/RNDC/releases/latest"
+GITHUB_API_URL = "https://api.github.com/repos/TU_USUARIO/TU_REPO/releases/latest"
 
 def verificar_actualizacion():
     """

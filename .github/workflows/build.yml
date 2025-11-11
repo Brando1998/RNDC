@@ -73,7 +73,7 @@ jobs:
 
       # ========== FUNCIONALIDAD ORIGINAL: Build executable ==========
       - name: Build executable
-        run: pyinstaller --onefile --add-data "drivers\\chromedriver.exe;drivers" app.py
+        run: pyinstaller --onefile --noconsole --add-data "drivers\\chromedriver.exe;drivers" app.py
 
       - name: List dist contents
         run: dir dist
