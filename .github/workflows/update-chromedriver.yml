@@ -1,0 +1,96 @@
+name: Auto-Update ChromeDriver
+
+on:
+  schedule:
+    # Ejecutar cada día a las 2 AM UTC
+    - cron: "0 2 * * *"
+  workflow_dispatch: # Permite ejecutar manualmente
+
+jobs:
+  check-and-update:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get current ChromeDriver version
+        id: current_version
+        shell: pwsh
+        run: |
+          if (Test-Path "drivers/chromedriver.exe") {
+            $version = (Get-Item "drivers/chromedriver.exe").VersionInfo.FileVersion
+            echo "version=$version" >> $env:GITHUB_OUTPUT
+          } else {
+            echo "version=0.0.0.0" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Get latest Chrome version
+        id: chrome_version
+        shell: pwsh
+        run: |
+          # Obtener la última versión estable de Chrome
+          $response = Invoke-RestMethod -Uri "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json"
+          $latestVersion = $response.channels.Stable.version
+          echo "Latest Chrome version: $latestVersion"
+          echo "version=$latestVersion" >> $env:GITHUB_OUTPUT
+
+      - name: Download new ChromeDriver if needed
+        id: download
+        shell: pwsh
+        run: |
+          $currentVersion = "${{ steps.current_version.outputs.version }}"
+          $latestVersion = "${{ steps.chrome_version.outputs.version }}"
+
+          echo "Current ChromeDriver version: $currentVersion"
+          echo "Latest Chrome version: $latestVersion"
+
+          if ($currentVersion -ne $latestVersion) {
+            echo "Nueva versión disponible. Descargando..."
+            
+            # Descargar ChromeDriver
+            $url = "https://storage.googleapis.com/chrome-for-testing-public/$latestVersion/win64/chromedriver-win64.zip"
+            Invoke-WebRequest -Uri $url -OutFile "chromedriver.zip"
+            
+            # Extraer
+            Expand-Archive -Path "chromedriver.zip" -DestinationPath "temp" -Force
+            
+            # Reemplazar el driver antiguo
+            if (-not (Test-Path "drivers")) {
+              New-Item -ItemType Directory -Path "drivers"
+            }
+            Copy-Item "temp/chromedriver-win64/chromedriver.exe" "drivers/chromedriver.exe" -Force
+            
+            # Limpiar
+            Remove-Item "chromedriver.zip"
+            Remove-Item "temp" -Recurse -Force
+            
+            echo "updated=true" >> $env:GITHUB_OUTPUT
+            echo "new_version=$latestVersion" >> $env:GITHUB_OUTPUT
+          } else {
+            echo "ChromeDriver ya está actualizado"
+            echo "updated=false" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Commit and push if changed
+        if: steps.download.outputs.updated == 'true'
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add drivers/chromedriver.exe
+          git commit -m "🤖 Auto-update ChromeDriver to v${{ steps.download.outputs.new_version }}"
+          git push
+
+      - name: Trigger build workflow
+        if: steps.download.outputs.updated == 'true'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'build.yml',
+              ref: 'main'
+            })

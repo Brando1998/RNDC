@@ -10,31 +10,127 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install pyinstaller
+      # ========== NUEVA FUNCIONALIDAD: Obtener versión del ChromeDriver ==========
+      - name: Get ChromeDriver version
+        id: driver_version
+        shell: pwsh
+        run: |
+          $version = "unknown"
+          if (Test-Path "drivers/chromedriver.exe") {
+            try {
+              $output = & "drivers/chromedriver.exe" --version
+              $version = ($output -split " ")[1]
+            } catch {
+              $version = "unknown"
+            }
+          }
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+          echo "ChromeDriver version: $version"
 
-    - name: Build executable
-      run: pyinstaller --onefile --add-data "drivers\\chromedriver.exe;drivers" app.py
+      # ========== NUEVA FUNCIONALIDAD: Generar número de versión ==========
+      - name: Generate version number
+        id: version
+        shell: pwsh
+        run: |
+          $buildNumber = $env:GITHUB_RUN_NUMBER
+          $driverVersion = "${{ steps.driver_version.outputs.version }}"
+          $version = "v1.0.$buildNumber"
+          $versionWithDriver = "v1.0.$buildNumber-driver$driverVersion"
 
-    - name: List dist contents
-      run: dir dist
+          echo "tag=$version" >> $env:GITHUB_OUTPUT
+          echo "full_tag=$versionWithDriver" >> $env:GITHUB_OUTPUT
+          echo "Generated version: $versionWithDriver"
 
-    - name: Compress executable
-      run: powershell Compress-Archive -Path dist/app.exe -DestinationPath dist/app.zip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: ejecutable-windows
-        path: dist/app.zip
+      # ========== NUEVA FUNCIONALIDAD: Actualizar versión en código ==========
+      - name: Update version in code (if actualizaciones.py exists)
+        shell: pwsh
+        run: |
+          if (Test-Path "_utils/actualizaciones.py") {
+            $version = "${{ steps.version.outputs.tag }}".Replace("v", "")
+            $content = Get-Content "_utils/actualizaciones.py" -Raw
+            $content = $content -replace 'VERSION_ACTUAL = ".*"', "VERSION_ACTUAL = `"$version`""
+            Set-Content "_utils/actualizaciones.py" -Value $content
+            echo "✅ Version updated in actualizaciones.py"
+          } else {
+            echo "⚠ actualizaciones.py not found, skipping version update"
+          }
+
+      # ========== FUNCIONALIDAD ORIGINAL: Build executable ==========
+      - name: Build executable
+        run: pyinstaller --onefile --add-data "drivers\\chromedriver.exe;drivers" app.py
+
+      - name: List dist contents
+        run: dir dist
+
+      # ========== NUEVA FUNCIONALIDAD: Obtener info del ejecutable ==========
+      - name: Get executable info
+        id: exe_info
+        shell: pwsh
+        run: |
+          $size = (Get-Item "dist/app.exe").Length / 1MB
+          $sizeFormatted = "{0:N2} MB" -f $size
+          echo "size=$sizeFormatted" >> $env:GITHUB_OUTPUT
+          echo "Executable size: $sizeFormatted"
+
+      # ========== FUNCIONALIDAD ORIGINAL: Compress executable ==========
+      - name: Compress executable
+        run: powershell Compress-Archive -Path dist/app.exe -DestinationPath dist/app.zip
+
+      # ========== FUNCIONALIDAD ORIGINAL: Upload artifact ==========
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ejecutable-windows
+          path: dist/app.zip
+
+      # ========== CREAR RELEASE EN GITHUB (SIEMPRE) ==========
+      - name: Create Release
+        if: github.event_name == 'push'
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          release_name: AutoRNDC ${{ steps.version.outputs.full_tag }}
+          body: |
+            ## 🚀 Nueva versión de AutoRNDC
+
+            **Build:** `#${{ github.run_number }}`
+            **ChromeDriver:** `${{ steps.driver_version.outputs.version }}`
+            **Tamaño:** `${{ steps.exe_info.outputs.size }}`
+
+            ### 📦 Descarga
+            Descarga el archivo `app.zip`, extráelo y ejecuta `app.exe`
+
+            ### 🔄 Cambios
+            ${{ github.event.head_commit.message }}
+          draft: false
+          prerelease: false
+
+      - name: Upload Release Asset
+        if: github.event_name == 'push'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./dist/app.zip
+          asset_name: app.zip
+          asset_content_type: application/zip
