@@ -1,35 +1,41 @@
 """
 Módulo de configuración para credenciales RNDC.
-Lee desde variables de entorno o archivo .env para desarrollo.
+Lee desde variables de entorno, archivo .env o credenciales embebidas.
 """
+
 import os
+import sys
+import base64
 
 def obtener_credenciales():
     """
-    Obtiene las credenciales de RNDC desde variables de entorno.
-    Para desarrollo, crea un archivo .env con las credenciales.
+    Obtiene las credenciales RNDC desde el entorno, .env o embebidas en el ejecutable.
     """
     usuario = os.getenv("RNDC_USUARIO")
     contrasena = os.getenv("RNDC_CONTRASENA")
-    
-    # Si no hay variables de entorno, intentar cargar desde .env (solo desarrollo)
+
+    # Si no hay entorno, intentar cargar .env (solo desarrollo)
     if not usuario or not contrasena:
+        if os.path.exists(".env"):
+            try:
+                from dotenv import load_dotenv
+                load_dotenv()
+                usuario = os.getenv("RNDC_USUARIO")
+                contrasena = os.getenv("RNDC_CONTRASENA")
+            except ImportError:
+                pass
+
+    # Si aún no hay credenciales, intentar leer las embebidas
+    if (not usuario or not contrasena) and getattr(sys, 'frozen', False):
         try:
-            from dotenv import load_dotenv
-            load_dotenv()
-            usuario = os.getenv("RNDC_USUARIO")
-            contrasena = os.getenv("RNDC_CONTRASENA")
-        except ImportError:
-            pass
-    
-    # Si aún no hay credenciales, mostrar error
+            from _utils import credenciales_embed
+            usuario = base64.b64decode(credenciales_embed.USUARIO_EMBEBIDO).decode("utf-8")
+            contrasena = base64.b64decode(credenciales_embed.CONTRASENA_EMBEBIDA).decode("utf-8")
+        except Exception:
+            raise RuntimeError("⚠️ No se pudieron cargar las credenciales embebidas en el ejecutable.")
+
+    # Validar al final
     if not usuario or not contrasena:
-        raise ValueError(
-            "⚠️ No se encontraron credenciales RNDC.\n\n"
-            "Para desarrollo: Crea un archivo .env con:\n"
-            "RNDC_USUARIO=tu_usuario\n"
-            "RNDC_CONTRASENA=tu_contraseña\n\n"
-            "Para producción: Las credenciales se inyectan automáticamente desde GitHub Secrets."
-        )
-    
+        raise RuntimeError("⚠️ No se encontraron credenciales RNDC válidas.")
+
     return usuario, contrasena

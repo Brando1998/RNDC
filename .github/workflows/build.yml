@@ -70,6 +70,22 @@ jobs:
           } else {
             echo "⚠ actualizaciones.py not found, skipping version update"
           }
+      # ========== SET CREDENTIALS ==============
+      - name: Embed encrypted credentials into code
+        shell: pwsh
+        env:
+          RNDC_USUARIO: ${{ secrets.RNDC_USUARIO }}
+          RNDC_CONTRASENA: ${{ secrets.RNDC_CONTRASENA }}
+        run: |
+          $encodedUser = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($env:RNDC_USUARIO))
+          $encodedPass = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($env:RNDC_CONTRASENA))
+          $content = @"
+          # Archivo generado automáticamente en el build
+          USUARIO_EMBEBIDO = "$encodedUser"
+          CONTRASENA_EMBEBIDA = "$encodedPass"
+          "@
+          Set-Content "_utils/credenciales_embed.py" -Value $content
+          echo "✅ Credenciales embebidas en código (encriptadas)"
 
       # ========== BUILD DEL EJECUTABLE ==========
       - name: Build executable
