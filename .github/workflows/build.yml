@@ -64,25 +64,21 @@ jobs:
           if (Test-Path "_utils/actualizaciones.py") {
             $version = "${{ steps.version.outputs.tag }}".Replace("v", "")
             $content = Get-Content "_utils/actualizaciones.py" -Raw
-            $content = $content -replace 'VERSION_ACTUAL = ".*"', "VERSION_ACTUAL = `"$version`""
+            $content = $content -replace 'VERSION_ACTUAL = ".*"', "VERSION_ACTUAL = `"$version`"" 
             Set-Content "_utils/actualizaciones.py" -Value $content
             echo "✅ Version updated in actualizaciones.py"
           } else {
             echo "⚠ actualizaciones.py not found, skipping version update"
           }
 
-      # ========== FUNCIONALIDAD ORIGINAL: Build executable ==========
+      # ========== BUILD DEL EJECUTABLE ==========
       - name: Build executable
         env:
           RNDC_USUARIO: ${{ secrets.RNDC_USUARIO }}
           RNDC_CONTRASENA: ${{ secrets.RNDC_CONTRASENA }}
         run: |
-          # Crear archivo .env temporal con las credenciales
-          echo "RNDC_USUARIO=$env:RNDC_USUARIO" > .env
-          echo "RNDC_CONTRASENA=$env:RNDC_CONTRASENA" >> .env
-
-          # Build del ejecutable
-          pyinstaller --onefile --noconsole --add-data "drivers\\chromedriver.exe;drivers" --add-data ".env;." app.py
+          echo "✅ Building executable with GitHub Secrets (sin .env)"
+          pyinstaller --onefile --noconsole --add-data "drivers\\chromedriver.exe;drivers" app.py
 
       - name: List dist contents
         run: dir dist
@@ -97,18 +93,18 @@ jobs:
           echo "size=$sizeFormatted" >> $env:GITHUB_OUTPUT
           echo "Executable size: $sizeFormatted"
 
-      # ========== FUNCIONALIDAD ORIGINAL: Compress executable ==========
+      # ========== COMPRESIÓN ==========
       - name: Compress executable
         run: powershell Compress-Archive -Path dist/app.exe -DestinationPath dist/app.zip
 
-      # ========== FUNCIONALIDAD ORIGINAL: Upload artifact ==========
+      # ========== UPLOAD ARTIFACT ==========
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ejecutable-windows
           path: dist/app.zip
 
-      # ========== CREAR RELEASE EN GITHUB (SIEMPRE) ==========
+      # ========== CREAR RELEASE ==========
       - name: Create Release
         if: github.event_name == 'push'
         id: create_release
