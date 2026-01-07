@@ -1,4 +1,4 @@
-from selenium.webdriver.common.by import By
+﻿from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import (
@@ -26,7 +26,7 @@ from _utils.esperas import (
 # ============================================================================
 # CONSTANTES Y LOGGER
 # ============================================================================
-ERROR_REMESA_NO_EMITIDA = "no ha sido emitida o ya está cerrada"
+ERROR_REMESA_NO_EMITIDA = "no ha sido emitida o ya estÃ¡ cerrada"
 ERROR_CRE064 = "CRE064"
 ERROR_CRE080 = "CRE080"
 ERROR_CRE100 = "CRE100"
@@ -39,13 +39,13 @@ ERROR_CRE308 = "CRE308"
 ERROR_CRE309 = "CRE309"
 
 TIEMPO_REINTENTO_SERVIDOR = 60  # 1 minuto
-MAX_REINTENTOS_SERVIDOR = 60  # 1 hora máximo
+MAX_REINTENTOS_SERVIDOR = 60  # 1 hora mÃ¡ximo
 
 logger = obtener_logger(TipoProceso.REMESA)
 
 
 # ============================================================================
-# RECUPERACIÓN AUTOMÁTICA
+# RECUPERACIÃ“N AUTOMÃTICA
 # ============================================================================
 def es_error_servidor(excepcion):
     """Detecta si es un error recuperable del servidor."""
@@ -65,7 +65,7 @@ def es_error_servidor(excepcion):
 
 
 def verificar_servidor_disponible(crear_driver_func):
-    """Verifica si el servidor RNDC está disponible."""
+    """Verifica si el servidor RNDC estÃ¡ disponible."""
     driver = None
     try:
         driver = crear_driver_func()
@@ -86,8 +86,8 @@ def verificar_servidor_disponible(crear_driver_func):
 
 def esperar_recuperacion_servidor(crear_driver_func, actualizar_estado_callback):
     """Espera a que el servidor RNDC se recupere."""
-    logger.registrar_error("SERVIDOR", "Servidor RNDC caído. Iniciando espera de recuperación", codigo_error="SERVIDOR_CAIDO")
-    actualizar_estado_callback("Servidor RNDC caído. Esperando recuperación...")
+    logger.registrar_error("SERVIDOR", "Servidor RNDC caÃ­do. Iniciando espera de recuperaciÃ³n", codigo_error="SERVIDOR_CAIDO")
+    actualizar_estado_callback("Servidor RNDC caÃ­do. Esperando recuperaciÃ³n...")
     
     for intento in range(1, MAX_REINTENTOS_SERVIDOR + 1):
         minutos = intento * TIEMPO_REINTENTO_SERVIDOR // 60
@@ -104,12 +104,12 @@ def esperar_recuperacion_servidor(crear_driver_func, actualizar_estado_callback)
             return driver
     
     logger.registrar_error("SERVIDOR", "Servidor no recuperado tras 1 hora", codigo_error="SERVIDOR_NO_RECUPERADO")
-    actualizar_estado_callback("Servidor no se recuperó tras 1 hora. Proceso detenido.")
+    actualizar_estado_callback("Servidor no se recuperÃ³ tras 1 hora. Proceso detenido.")
     return None
 
 
 class CheckpointManager:
-    """Gestiona el progreso para reanudar después de caídas."""
+    """Gestiona el progreso para reanudar despuÃ©s de caÃ­das."""
     
     def __init__(self, archivo="checkpoint_remesas.txt"):
         self.archivo = os.path.join("logs", archivo)
@@ -144,7 +144,7 @@ class CheckpointManager:
 
 
 # ============================================================================
-# VALIDACIÓN
+# VALIDACIÃ“N
 # ============================================================================
 def validar_hora_formato(hora_str):
     if not hora_str or hora_str.strip() == "":
@@ -168,7 +168,7 @@ def validar_hora_formato(hora_str):
 
 
 def validar_fecha_formato(fecha_str):
-    """Valida que una fecha no esté vacía y tenga formato correcto."""
+    """Valida que una fecha no estÃ© vacÃ­a y tenga formato correcto."""
     if not fecha_str or fecha_str.strip() == "":
         return False
     try:
@@ -179,7 +179,7 @@ def validar_fecha_formato(fecha_str):
 
 
 # ============================================================================
-# CÁLCULOS
+# CÃLCULOS
 # ============================================================================
 def calcular_hora_salida(hora_entrada_str, minutos_adicionales=60):
     """
@@ -188,12 +188,12 @@ def calcular_hora_salida(hora_entrada_str, minutos_adicionales=60):
     """
     es_valida, hora_corregida = validar_hora_formato(hora_entrada_str)
     if not es_valida:
-        logger.registrar_error("SISTEMA", f"Hora inválida: '{hora_entrada_str}'", codigo_error="HORA_INVALIDA")
+        logger.registrar_error("SISTEMA", f"Hora invÃ¡lida: '{hora_entrada_str}'", codigo_error="HORA_INVALIDA")
     
     hora_entrada = datetime.strptime(hora_corregida, "%H:%M")
     hora_salida = hora_entrada + timedelta(minutes=minutos_adicionales)
     
-    # Si cruza medianoche (hora >= 00:00 del día siguiente), usar 23:59
+    # Si cruza medianoche (hora >= 00:00 del dÃ­a siguiente), usar 23:59
     if hora_salida.hour < hora_entrada.hour or hora_salida.day > hora_entrada.day:
         return "23:59"
     
@@ -219,26 +219,26 @@ def calcular_fecha_salida_descargue(fecha_descargue_str, hora_llegada_str):
     """
     es_valida, hora_corregida = validar_hora_formato(hora_llegada_str)
     
-    # La hora de salida será calculada con calcular_hora_salida que ya evita cruzar medianoche
+    # La hora de salida serÃ¡ calculada con calcular_hora_salida que ya evita cruzar medianoche
     hora_salida = calcular_hora_salida(hora_corregida, 60)
     
-    # Si la hora de salida es menor que la de llegada, significa que cruzó medianoche
-    # pero calcular_hora_salida la ajustó a 23:59, entonces NO incrementamos el día
+    # Si la hora de salida es menor que la de llegada, significa que cruzÃ³ medianoche
+    # pero calcular_hora_salida la ajustÃ³ a 23:59, entonces NO incrementamos el dÃ­a
     hora_llegada_dt = datetime.strptime(hora_corregida, "%H:%M")
     hora_salida_dt = datetime.strptime(hora_salida, "%H:%M")
     
     fecha_descargue_dt = datetime.strptime(fecha_descargue_str, "%d/%m/%Y")
     
-    # Solo incrementar día si realmente hay un cruce (pero esto no debería pasar con 23:59 como límite)
+    # Solo incrementar dÃ­a si realmente hay un cruce (pero esto no deberÃ­a pasar con 23:59 como lÃ­mite)
     if hora_salida == "23:59" and hora_llegada_dt.hour == 23:
-        # Caso especial: llegada tardía, salida al límite del día
+        # Caso especial: llegada tardÃ­a, salida al lÃ­mite del dÃ­a
         return fecha_descargue_dt.strftime("%d/%m/%Y")
     
     return fecha_descargue_dt.strftime("%d/%m/%Y")
 
 
 # ============================================================================
-# INTERACCIÓN CON ELEMENTOS (CON ESPERAS)
+# INTERACCIÃ“N CON ELEMENTOS (CON ESPERAS)
 # ============================================================================
 def llenar_campo_seguro(driver, campo_id, valor, timeout=5):
     """Llena un campo esperando a que sea interactuable."""
@@ -260,14 +260,14 @@ def llenar_campo_seguro(driver, campo_id, valor, timeout=5):
 # ============================================================================
 def esperar_formulario_cargado(driver, remesa_id, max_intentos=3):
     """
-    Espera a que el formulario esté completamente cargado con todos los campos visibles.
+    Espera a que el formulario estÃ© completamente cargado con todos los campos visibles.
     
     Returns:
-        bool: True si el formulario está listo, False si no se pudo cargar
+        bool: True si el formulario estÃ¡ listo, False si no se pudo cargar
     """
     for intento in range(max_intentos):
         try:
-            # Verificar que los campos críticos existan y estén visibles
+            # Verificar que los campos crÃ­ticos existan y estÃ©n visibles
             campos_criticos = [
                 "dnn_ctr396_CumplirRemesa_FECHALLEGADADESCARGUE",
                 "dnn_ctr396_CumplirRemesa_HORALLEGADADESCARGUECUMPLIDO",
@@ -287,11 +287,11 @@ def esperar_formulario_cargado(driver, remesa_id, max_intentos=3):
             if todos_visibles:
                 return True
             
-            # Si no están todos visibles, recargar
+            # Si no estÃ¡n todos visibles, recargar
             logger.registrar_error(remesa_id, f"Formulario incompleto, intento {intento + 1}/{max_intentos}", codigo_error="FORMULARIO_INCOMPLETO")
             navegar_a_remesas(driver)
             
-            # Reingresar código
+            # Reingresar cÃ³digo
             campo_remesa = driver.find_element(By.ID, "dnn_ctr396_CumplirRemesa_CONSECUTIVOREMESA")
             campo_remesa.clear()
             campo_remesa.send_keys(remesa_id)
@@ -320,9 +320,9 @@ def llenar_formulario_remesa(driver, remesa_id):
         logger.registrar_error(remesa_id, "Remesa no emitida o ya cerrada", codigo_error="NO_EMITIDA")
         raise ValueError("REMESA_NO_EMITIDA_O_YA_CERRADA")
     
-    # VERIFICAR QUE EL FORMULARIO ESTÉ COMPLETAMENTE CARGADO
+    # VERIFICAR QUE EL FORMULARIO ESTÃ‰ COMPLETAMENTE CARGADO
     if not esperar_formulario_cargado(driver, remesa_id):
-        logger.registrar_error(remesa_id, "Formulario no cargó correctamente tras reintentos", codigo_error="FORMULARIO_NO_CARGO")
+        logger.registrar_error(remesa_id, "Formulario no cargÃ³ correctamente tras reintentos", codigo_error="FORMULARIO_NO_CARGO")
         raise ValueError("FORMULARIO_NO_CARGO")
     
     Select(driver.find_element(By.ID, "dnn_ctr396_CumplirRemesa_NOMTIPOCUMPLIDOREMESA")).select_by_visible_text("Cumplido Normal")
@@ -336,27 +336,27 @@ def llenar_formulario_remesa(driver, remesa_id):
     fecha_cargue = driver.find_element(By.ID, "dnn_ctr396_CumplirRemesa_FECHACITAPACTADACARGUE").get_attribute("value")
     fecha_descargue = driver.find_element(By.ID, "dnn_ctr396_CumplirRemesa_FECHACITAPACTADADESCARGUE").get_attribute("value")
     
-    # Si fecha_cargue está vacía, usar fecha de expedición
+    # Si fecha_cargue estÃ¡ vacÃ­a, usar fecha de expediciÃ³n
     if not validar_fecha_formato(fecha_cargue):
-        logger.registrar_error(remesa_id, f"Fecha cargue inválida: '{fecha_cargue}', intentando usar fecha expedición", codigo_error="FECHA_CARGUE_INVALIDA")
+        logger.registrar_error(remesa_id, f"Fecha cargue invÃ¡lida: '{fecha_cargue}', intentando usar fecha expediciÃ³n", codigo_error="FECHA_CARGUE_INVALIDA")
         try:
             fecha_expedicion_element = driver.find_element(By.ID, "dnn_ctr396_CumplirRemesa_FECHAEMISION")
             fecha_cargue = fecha_expedicion_element.get_attribute("value")
             if not validar_fecha_formato(fecha_cargue):
-                # Si tampoco tiene fecha de expedición, usar fecha actual
-                logger.registrar_error(remesa_id, "Fecha expedición también inválida, usando fecha actual", codigo_error="USANDO_FECHA_ACTUAL")
+                # Si tampoco tiene fecha de expediciÃ³n, usar fecha actual
+                logger.registrar_error(remesa_id, "Fecha expediciÃ³n tambiÃ©n invÃ¡lida, usando fecha actual", codigo_error="USANDO_FECHA_ACTUAL")
                 fecha_cargue = datetime.today().strftime("%d/%m/%Y")
         except Exception:
-            # Último recurso: fecha actual
+            # Ãšltimo recurso: fecha actual
             fecha_cargue = datetime.today().strftime("%d/%m/%Y")
-            logger.registrar_error(remesa_id, "Usando fecha actual como último recurso", codigo_error="FECHA_ACTUAL_FALLBACK")
+            logger.registrar_error(remesa_id, "Usando fecha actual como Ãºltimo recurso", codigo_error="FECHA_ACTUAL_FALLBACK")
     
     if not validar_fecha_formato(fecha_descargue):
-        logger.registrar_error(remesa_id, f"Fecha descargue inválida: '{fecha_descargue}'", codigo_error="FECHA_DESCARGUE_INVALIDA")
-        # Usar fecha cargue + 1 día como fallback
+        logger.registrar_error(remesa_id, f"Fecha descargue invÃ¡lida: '{fecha_descargue}'", codigo_error="FECHA_DESCARGUE_INVALIDA")
+        # Usar fecha cargue + 1 dÃ­a como fallback
         fecha_cargue_dt = datetime.strptime(fecha_cargue, "%d/%m/%Y")
         fecha_descargue = (fecha_cargue_dt + timedelta(days=1)).strftime("%d/%m/%Y")
-        logger.registrar_error(remesa_id, f"Usando fecha cargue + 1 día: {fecha_descargue}", codigo_error="FECHA_DESCARGUE_CALCULADA")
+        logger.registrar_error(remesa_id, f"Usando fecha cargue + 1 dÃ­a: {fecha_descargue}", codigo_error="FECHA_DESCARGUE_CALCULADA")
     
     # Validar que fecha descargue no sea futura
     if datetime.strptime(fecha_descargue, "%d/%m/%Y").date() > datetime.today().date():
@@ -368,7 +368,7 @@ def llenar_formulario_remesa(driver, remesa_id):
     es_valida_cargue, hora_cargue = validar_hora_formato(hora_cargue_raw)
     
     if not es_valida_cargue:
-        logger.registrar_error(remesa_id, f"Hora cargue inválida: '{hora_cargue_raw}'", codigo_error="HORA_CARGUE_INVALIDA")
+        logger.registrar_error(remesa_id, f"Hora cargue invÃ¡lida: '{hora_cargue_raw}'", codigo_error="HORA_CARGUE_INVALIDA")
     
     hora_salida_cargue = calcular_hora_salida(hora_cargue, 60)
     
@@ -376,7 +376,7 @@ def llenar_formulario_remesa(driver, remesa_id):
     es_valida_desc, hora_descargue_original = validar_hora_formato(hora_descargue_raw)
     
     if not es_valida_desc:
-        logger.registrar_error(remesa_id, f"Hora descargue inválida: '{hora_descargue_raw}'", codigo_error="HORA_DESCARGUE_INVALIDA")
+        logger.registrar_error(remesa_id, f"Hora descargue invÃ¡lida: '{hora_descargue_raw}'", codigo_error="HORA_DESCARGUE_INVALIDA")
     
     hora_llegada_descargue = ajustar_hora_descargue(hora_descargue_original, hora_salida_cargue)
     hora_salida_descargue = calcular_hora_salida(hora_llegada_descargue, 60)
@@ -428,12 +428,12 @@ def reescribir_campos(driver, campos_actualizados):
 
 
 def manejar_error_cre230(driver, codigo, campos, actualizar_estado_callback):
-    """CRE230: Omitir campo de hora salida descargue problemático."""
+    """CRE230: Omitir campo de hora salida descargue problemÃ¡tico."""
     try:
-        actualizar_estado_callback(f"⏳ Error CRE230 en {codigo}. Omitiendo hora salida...")
+        actualizar_estado_callback(f"â³ Error CRE230 en {codigo}. Omitiendo hora salida...")
         logger.registrar_reintento(codigo, 1, "Omitiendo hora salida CRE230", codigo_error=ERROR_CRE230)
         
-        # Dejar el campo de hora salida VACÍO
+        # Dejar el campo de hora salida VACÃO
         campos_modificados = [
             (id_campo, "" if "HORASALIDADESCARGUECUMPLIDO" in id_campo else valor)
             for id_campo, valor in campos
@@ -445,11 +445,11 @@ def manejar_error_cre230(driver, codigo, campos, actualizar_estado_callback):
         if texto_alerta_reintento is None:
             WebDriverWait(driver, TIMEOUT_MEDIO).until(EC.presence_of_element_located((By.ID, "dnn_ctr396_CumplirRemesaNew_btNuevo")))
             logger.registrar_exito(codigo, "Reintento exitoso omitiendo CRE230")
-            actualizar_estado_callback(f"✅ Remesa {codigo} completada.")
+            actualizar_estado_callback(f"âœ… Remesa {codigo} completada.")
             return True
         else:
-            logger.registrar_alerta(codigo, "CRE230_RETRY_FAILED", f"Falló: {texto_alerta_reintento}")
-            actualizar_estado_callback(f"❌ Remesa {codigo} - CRE230 no resoluble")
+            logger.registrar_alerta(codigo, "CRE230_RETRY_FAILED", f"FallÃ³: {texto_alerta_reintento}")
+            actualizar_estado_callback(f"âŒ Remesa {codigo} - CRE230 no resoluble")
             return False
     except Exception as e:
         logger.registrar_excepcion(codigo, e, "Error en reintento CRE230")
@@ -457,13 +457,13 @@ def manejar_error_cre230(driver, codigo, campos, actualizar_estado_callback):
 
 
 def manejar_error_cre141(driver, codigo, campos, actualizar_estado_callback):
-    """CRE141: Ajustar con tiempo mínimo de 30 minutos."""
+    """CRE141: Ajustar con tiempo mÃ­nimo de 30 minutos."""
     try:
-        actualizar_estado_callback(f"⏳ Error CRE141 en {codigo}. Ajustando +30 min...")
+        actualizar_estado_callback(f"â³ Error CRE141 en {codigo}. Ajustando +30 min...")
         logger.registrar_reintento(codigo, 1, "Ajustando CRE141 (+30 min)", codigo_error=ERROR_CRE141)
         
         hora_entrada_cargue = campos[4][1]
-        nueva_hora_salida = calcular_hora_salida(hora_entrada_cargue, 30)  # 30 minutos mínimo
+        nueva_hora_salida = calcular_hora_salida(hora_entrada_cargue, 30)  # 30 minutos mÃ­nimo
         
         campos_modificados = [
             (id_campo, nueva_hora_salida if "HORASALIDACARGUEREMESA" in id_campo else valor)
@@ -475,10 +475,10 @@ def manejar_error_cre141(driver, codigo, campos, actualizar_estado_callback):
         if texto_alerta_reintento is None:
             WebDriverWait(driver, TIMEOUT_MEDIO).until(EC.presence_of_element_located((By.ID, "dnn_ctr396_CumplirRemesaNew_btNuevo")))
             logger.registrar_exito(codigo, "Reintento exitoso CRE141")
-            actualizar_estado_callback(f"✅ Remesa {codigo} completada.")
+            actualizar_estado_callback(f"âœ… Remesa {codigo} completada.")
             return True
         else:
-            logger.registrar_alerta(codigo, "CRE141_RETRY_FAILED", f"Falló: {texto_alerta_reintento}")
+            logger.registrar_alerta(codigo, "CRE141_RETRY_FAILED", f"FallÃ³: {texto_alerta_reintento}")
             return False
     except Exception as e:
         logger.registrar_excepcion(codigo, e, "Error en reintento CRE141")
@@ -487,8 +487,8 @@ def manejar_error_cre141(driver, codigo, campos, actualizar_estado_callback):
 
 def manejar_errores_antiguedad(driver, codigo, campos, actualizar_estado_callback):
     try:
-        actualizar_estado_callback(f"⏳ Antigüedad en {codigo}. Usando fecha expedición...")
-        logger.registrar_reintento(codigo, 1, "Ajustando antigüedad", codigo_error="CRE_ANTIGUEDAD")
+        actualizar_estado_callback(f"â³ AntigÃ¼edad en {codigo}. Usando fecha expediciÃ³n...")
+        logger.registrar_reintento(codigo, 1, "Ajustando antigÃ¼edad", codigo_error="CRE_ANTIGUEDAD")
         
         fecha_expedicion_element = driver.find_element(By.ID, "dnn_ctr396_CumplirRemesa_FECHAEMISION")
         fecha_expedicion_str = fecha_expedicion_element.get_attribute("value")
@@ -516,20 +516,20 @@ def manejar_errores_antiguedad(driver, codigo, campos, actualizar_estado_callbac
         
         if texto_alerta_reintento is None:
             WebDriverWait(driver, TIMEOUT_MEDIO).until(EC.presence_of_element_located((By.ID, "dnn_ctr396_CumplirRemesaNew_btNuevo")))
-            logger.registrar_exito(codigo, "Reintento exitoso antigüedad")
-            actualizar_estado_callback(f"✅ Remesa {codigo} completada.")
+            logger.registrar_exito(codigo, "Reintento exitoso antigÃ¼edad")
+            actualizar_estado_callback(f"âœ… Remesa {codigo} completada.")
             return True
         else:
-            logger.registrar_alerta(codigo, "ANTIGUEDAD_RETRY_FAILED", f"Falló: {texto_alerta_reintento}")
+            logger.registrar_alerta(codigo, "ANTIGUEDAD_RETRY_FAILED", f"FallÃ³: {texto_alerta_reintento}")
             return False
     except Exception as e:
-        logger.registrar_excepcion(codigo, e, "Error antigüedad")
+        logger.registrar_excepcion(codigo, e, "Error antigÃ¼edad")
         return False
 
 
 def manejar_error_cre308(driver, codigo, campos, actualizar_estado_callback):
     try:
-        actualizar_estado_callback(f"⏳ CRE308 en {codigo}. +5 días...")
+        actualizar_estado_callback(f"â³ CRE308 en {codigo}. +5 dÃ­as...")
         logger.registrar_reintento(codigo, 1, "Ajustando CRE308", codigo_error=ERROR_CRE308)
         
         nueva_fecha = (datetime.strptime(campos[6][1], "%d/%m/%Y") + timedelta(days=5)).strftime("%d/%m/%Y")
@@ -543,10 +543,10 @@ def manejar_error_cre308(driver, codigo, campos, actualizar_estado_callback):
         if texto_alerta_reintento is None:
             WebDriverWait(driver, TIMEOUT_MEDIO).until(EC.presence_of_element_located((By.ID, "dnn_ctr396_CumplirRemesaNew_btNuevo")))
             logger.registrar_exito(codigo, "Reintento exitoso CRE308")
-            actualizar_estado_callback(f"✅ Remesa {codigo} completada.")
+            actualizar_estado_callback(f"âœ… Remesa {codigo} completada.")
             return True
         else:
-            logger.registrar_alerta(codigo, "CRE308_RETRY_FAILED", f"Falló: {texto_alerta_reintento}")
+            logger.registrar_alerta(codigo, "CRE308_RETRY_FAILED", f"FallÃ³: {texto_alerta_reintento}")
             return False
     except Exception as e:
         logger.registrar_excepcion(codigo, e, "Error CRE308")
@@ -555,7 +555,7 @@ def manejar_error_cre308(driver, codigo, campos, actualizar_estado_callback):
 
 def manejar_error_cre309(driver, codigo, campos, actualizar_estado_callback):
     try:
-        actualizar_estado_callback(f"⏳ CRE309 en {codigo}. +3 días +3 horas...")
+        actualizar_estado_callback(f"â³ CRE309 en {codigo}. +3 dÃ­as +3 horas...")
         logger.registrar_reintento(codigo, 1, "Ajustando CRE309", codigo_error=ERROR_CRE309)
         
         nueva_fecha = (datetime.strptime(campos[6][1], "%d/%m/%Y") + timedelta(days=3)).strftime("%d/%m/%Y")
@@ -576,10 +576,10 @@ def manejar_error_cre309(driver, codigo, campos, actualizar_estado_callback):
         if texto_alerta_reintento is None:
             WebDriverWait(driver, TIMEOUT_MEDIO).until(EC.presence_of_element_located((By.ID, "dnn_ctr396_CumplirRemesaNew_btNuevo")))
             logger.registrar_exito(codigo, "Reintento exitoso CRE309")
-            actualizar_estado_callback(f"✅ Remesa {codigo} completada.")
+            actualizar_estado_callback(f"âœ… Remesa {codigo} completada.")
             return True
         else:
-            logger.registrar_alerta(codigo, "CRE309_RETRY_FAILED", f"Falló: {texto_alerta_reintento}")
+            logger.registrar_alerta(codigo, "CRE309_RETRY_FAILED", f"FallÃ³: {texto_alerta_reintento}")
             return False
     except Exception as e:
         logger.registrar_excepcion(codigo, e, "Error CRE309")
@@ -588,7 +588,7 @@ def manejar_error_cre309(driver, codigo, campos, actualizar_estado_callback):
 
 def manejar_error_cre270(driver, codigo, campos, actualizar_estado_callback):
     try:
-        actualizar_estado_callback(f"⏳ CRE270 en {codigo}. Fecha expedición...")
+        actualizar_estado_callback(f"â³ CRE270 en {codigo}. Fecha expediciÃ³n...")
         logger.registrar_reintento(codigo, 1, "Ajustando CRE270", codigo_error=ERROR_CRE270)
         
         fecha_expedicion_element = driver.find_element(By.ID, "dnn_ctr396_CumplirRemesa_FECHAEMISION")
@@ -618,10 +618,10 @@ def manejar_error_cre270(driver, codigo, campos, actualizar_estado_callback):
         if texto_alerta_reintento is None:
             WebDriverWait(driver, TIMEOUT_MEDIO).until(EC.presence_of_element_located((By.ID, "dnn_ctr396_CumplirRemesaNew_btNuevo")))
             logger.registrar_exito(codigo, "Reintento exitoso CRE270")
-            actualizar_estado_callback(f"✅ Remesa {codigo} completada.")
+            actualizar_estado_callback(f"âœ… Remesa {codigo} completada.")
             return True
         else:
-            logger.registrar_alerta(codigo, "CRE270_RETRY_FAILED", f"Falló: {texto_alerta_reintento}")
+            logger.registrar_alerta(codigo, "CRE270_RETRY_FAILED", f"FallÃ³: {texto_alerta_reintento}")
             return False
     except Exception as e:
         logger.registrar_excepcion(codigo, e, "Error CRE270")
@@ -634,7 +634,7 @@ def guardar_y_manejar_alertas(driver, codigo, actualizar_estado_callback, campos
     if texto_alerta is None:
         WebDriverWait(driver, TIMEOUT_MEDIO).until(EC.presence_of_element_located((By.ID, "dnn_ctr396_CumplirRemesaNew_btNuevo")))
         logger.registrar_exito(codigo, "Remesa completada correctamente")
-        actualizar_estado_callback(f"✅ Remesa {codigo} completada correctamente.")
+        actualizar_estado_callback(f"âœ… Remesa {codigo} completada correctamente.")
         return True
     
     logger.registrar_alerta(codigo, texto_alerta.split()[0] if texto_alerta else "UNKNOWN", texto_alerta)
@@ -642,7 +642,7 @@ def guardar_y_manejar_alertas(driver, codigo, actualizar_estado_callback, campos
     
     if ERROR_CRE064 in texto_alerta:
         logger.registrar_exito(codigo, "Remesa ya completada", codigo_error=ERROR_CRE064)
-        actualizar_estado_callback(f"✅ Remesa {codigo} ya completada anteriormente.")
+        actualizar_estado_callback(f"âœ… Remesa {codigo} ya completada anteriormente.")
         return True
     elif ERROR_CRE230 in texto_alerta:
         return manejar_error_cre230(driver, codigo, campos, actualizar_estado_callback)
@@ -651,7 +651,7 @@ def guardar_y_manejar_alertas(driver, codigo, actualizar_estado_callback, campos
     elif any(err in texto_alerta for err in [ERROR_CRE080, ERROR_CRE100, ERROR_CRE130]):
         return manejar_errores_antiguedad(driver, codigo, campos, actualizar_estado_callback)
     elif ERROR_CRE250 in texto_alerta:
-        actualizar_estado_callback(f"⚠ Remesa {codigo} con error de fechas.")
+        actualizar_estado_callback(f"âš  Remesa {codigo} con error de fechas.")
         return False
     elif ERROR_CRE308 in texto_alerta:
         return manejar_error_cre308(driver, codigo, campos, actualizar_estado_callback)
@@ -661,16 +661,16 @@ def guardar_y_manejar_alertas(driver, codigo, actualizar_estado_callback, campos
         return manejar_error_cre270(driver, codigo, campos, actualizar_estado_callback)
     else:
         logger.registrar_error(codigo, f"Error no manejado: {texto_alerta}")
-        actualizar_estado_callback(f"❌ Remesa {codigo} falló: {texto_alerta}")
+        actualizar_estado_callback(f"âŒ Remesa {codigo} fallÃ³: {texto_alerta}")
         return False
 
 
 # ============================================================================
-# FUNCIÓN PRINCIPAL CON RECUPERACIÓN
+# FUNCIÃ“N PRINCIPAL CON RECUPERACIÃ“N
 # ============================================================================
 def ejecutar_remesas(driver, codigos, actualizar_estado_callback, pausa_event, cancelar_func):
     """
-    Función principal con sistema de recuperación automática.
+    FunciÃ³n principal con sistema de recuperaciÃ³n automÃ¡tica.
     """
     # Importar crear_driver desde navegador
     from _core.navegador import crear_driver
@@ -703,7 +703,7 @@ def ejecutar_remesas(driver, codigos, actualizar_estado_callback, pausa_event, c
                 if es_error_servidor(e):
                     logger.registrar_error("SISTEMA", f"Error servidor en {codigo}: {str(e)[:200]}", codigo_error="ERROR_SERVIDOR")
                     
-                    # Intentar recuperación
+                    # Intentar recuperaciÃ³n
                     driver_recuperado = esperar_recuperacion_servidor(crear_driver, actualizar_estado_callback)
                     
                     if driver_recuperado:
@@ -716,18 +716,18 @@ def ejecutar_remesas(driver, codigos, actualizar_estado_callback, pausa_event, c
                         
                         driver_actual = driver_recuperado
                         
-                        # Reiniciar sesión
+                        # Reiniciar sesiÃ³n
                         try:
                             hacer_login(driver_actual)
                             navegar_a_remesas(driver_actual)
                         except Exception as login_err:
-                            logger.registrar_excepcion("SISTEMA", login_err, "Error en login tras recuperación")
+                            logger.registrar_excepcion("SISTEMA", login_err, "Error en login tras recuperaciÃ³n")
                             continue
                         
                         # Reintentar con servidor recuperado
                         continue
                     else:
-                        # No se recuperó el servidor
+                        # No se recuperÃ³ el servidor
                         return False, None
                 
                 # Error no recuperable
@@ -736,7 +736,7 @@ def ejecutar_remesas(driver, codigos, actualizar_estado_callback, pausa_event, c
                     checkpoint.marcar_procesado(codigo)  # Marcar como procesada para no reintentarla
                     return True, driver_actual
                 elif "FORMULARIO_NO_CARGO" in str(e):
-                    actualizar_estado_callback(f"Formulario de {codigo} no cargó. Saltando...")
+                    actualizar_estado_callback(f"Formulario de {codigo} no cargÃ³. Saltando...")
                     return True, driver_actual
                 else:
                     logger.registrar_excepcion(codigo, e, "Error procesando remesa")
@@ -758,11 +758,11 @@ def ejecutar_remesas(driver, codigos, actualizar_estado_callback, pausa_event, c
             actualizar_estado_callback(f"Procesando remesa {codigo}...")
             pausa_event.wait()
             
-            # Procesar con recuperación automática
+            # Procesar con recuperaciÃ³n automÃ¡tica
             exito, driver = procesar_remesa_seguro(driver, codigo)
             
             if not exito or driver is None:
-                # Servidor no se recuperó
+                # Servidor no se recuperÃ³
                 actualizar_estado_callback("Proceso detenido. Servidor no disponible.")
                 break
         
@@ -776,7 +776,7 @@ def ejecutar_remesas(driver, codigos, actualizar_estado_callback, pausa_event, c
         
     except Exception as e:
         actualizar_estado_callback(f"Error general: {e}")
-        logger.registrar_excepcion("SISTEMA", e, "Error general en ejecución")
+        logger.registrar_excepcion("SISTEMA", e, "Error general en ejecuciÃ³n")
     finally:
         if driver:
             try:
@@ -786,3 +786,112 @@ def ejecutar_remesas(driver, codigos, actualizar_estado_callback, pausa_event, c
         
         if not cancelar_func():
             messagebox.showinfo("Proceso completado", f"El proceso ha finalizado.\n\n{logger.generar_reporte()}")
+
+
+# ============================================================================
+# PROCESAMIENTO PARALELO
+# ============================================================================
+import threading
+import time
+
+
+class SesionRemesa:
+    def __init__(self, sesion_id, codigos, actualizar_callback):
+        self.sesion_id = sesion_id
+        self.codigos = codigos
+        self.actualizar_callback = actualizar_callback
+        self.driver = None
+        self.thread = None
+        self.pausa_event = threading.Event()
+        self.pausa_event.set()
+        self.cancelar_flag = False
+        self.completado = False
+        self.progreso = 0
+        self.total = len(codigos)
+        
+    def actualizar_estado(self, mensaje):
+        if "Procesando remesa" in mensaje:
+            self.progreso += 1
+        self.actualizar_callback(self.sesion_id, mensaje, self.progreso, self.total)
+    
+    def iniciar(self):
+        def run():
+            try:
+                from _core.navegador import crear_driver
+                self.driver = crear_driver()
+                ejecutar_remesas(self.driver, self.codigos, self.actualizar_estado, self.pausa_event, lambda: self.cancelar_flag)
+                self.completado = True
+                self.actualizar_estado("Sesion completada")
+            except Exception as e:
+                self.actualizar_estado(f"Error: {str(e)[:50]}")
+            finally:
+                if self.driver:
+                    try:
+                        self.driver.quit()
+                    except:
+                        pass
+        self.thread = threading.Thread(target=run, daemon=True)
+        self.thread.start()
+    
+    def pausar(self):
+        self.pausa_event.clear()
+    
+    def continuar(self):
+        self.pausa_event.set()
+    
+    def cancelar(self):
+        self.cancelar_flag = True
+        self.pausa_event.set()
+
+
+class ProcesadorParalelo:
+    def __init__(self, codigos_totales, num_sesiones, actualizar_callback):
+        self.codigos_totales = codigos_totales
+        self.num_sesiones = num_sesiones
+        self.actualizar_callback = actualizar_callback
+        self.sesiones = []
+        self._dividir_codigos()
+    
+    def _dividir_codigos(self):
+        total = len(self.codigos_totales)
+        tamanio_parte = total // self.num_sesiones
+        resto = total % self.num_sesiones
+        inicio = 0
+        for i in range(self.num_sesiones):
+            fin = inicio + tamanio_parte + (1 if i < resto else 0)
+            codigos_sesion = self.codigos_totales[inicio:fin]
+            sesion = SesionRemesa(i + 1, codigos_sesion, self.actualizar_callback)
+            self.sesiones.append(sesion)
+            inicio = fin
+    
+    def iniciar_todas(self):
+        for sesion in self.sesiones:
+            sesion.iniciar()
+            time.sleep(2)
+    
+    def pausar_todas(self):
+        for s in self.sesiones:
+            s.pausar()
+    
+    def continuar_todas(self):
+        for s in self.sesiones:
+            s.continuar()
+    
+    def cancelar_todas(self):
+        for s in self.sesiones:
+            s.cancelar()
+    
+    def obtener_estadisticas(self):
+        total_procesadas = sum(s.progreso for s in self.sesiones)
+        total_codigos = sum(s.total for s in self.sesiones)
+        sesiones_completadas = sum(1 for s in self.sesiones if s.completado)
+        return {
+            'procesadas': total_procesadas,
+            'total': total_codigos,
+            'porcentaje': (total_procesadas / total_codigos * 100) if total_codigos > 0 else 0,
+            'sesiones_completadas': sesiones_completadas,
+            'sesiones_totales': self.num_sesiones
+        }
+    
+    def todas_completadas(self):
+        return all(s.completado or s.cancelar_flag for s in self.sesiones)
