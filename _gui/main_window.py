@@ -49,6 +49,12 @@ class VentanaMonitoreo(Toplevel):
         
         btn_frame = Frame(self)
         btn_frame.pack(pady=10)
+        
+        # Definir callbacks como None primero
+        self.pausar_callback = None
+        self.continuar_callback = None
+        self.cancelar_callback = None
+        
         self.btn_pausar = Button(btn_frame, text="Pausar Todas", command=self.pausar_callback, width=15)
         self.btn_pausar.grid(row=0, column=0, padx=5)
         self.btn_continuar = Button(btn_frame, text="Continuar Todas", command=self.continuar_callback, width=15)
