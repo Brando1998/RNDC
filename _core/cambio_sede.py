@@ -1,6 +1,7 @@
 """
 Módulo para cambio masivo de sede en remesas RNDC.
 Lee datos desde Excel y realiza cambios de generador/sede en el sistema.
+VERSIÓN MEJORADA con búsqueda inteligente de sedes.
 """
 
 from selenium.webdriver.common.by import By
@@ -10,6 +11,7 @@ from selenium.common.exceptions import TimeoutException, UnexpectedAlertPresentE
 from selenium.webdriver.common.keys import Keys
 import time
 import pandas as pd
+import unicodedata
 from _utils.logger import registrar_log_remesa
 from _core.common import hacer_login
 
@@ -71,9 +73,39 @@ def cargar_datos_excel(ruta_archivo):
         raise Exception(f"Error leyendo Excel: {str(e)}")
 
 
+def normalizar_texto(texto):
+    """
+    Normaliza texto removiendo tildes, espacios extras y caracteres especiales.
+    
+    Args:
+        texto: Texto a normalizar
+    
+    Returns:
+        str: Texto normalizado
+    """
+    # Convertir a mayúsculas
+    texto = texto.upper()
+    
+    # Remover tildes/acentos
+    texto = ''.join(
+        c for c in unicodedata.normalize('NFD', texto)
+        if unicodedata.category(c) != 'Mn'
+    )
+    
+    # Remover caracteres especiales (guiones, puntos, etc.) y espacios extras
+    texto = ' '.join(texto.replace('-', ' ').replace('.', ' ').split())
+    
+    return texto
+
+
 def buscar_codigo_sede(driver, texto_sede):
     """
-    Busca el código de una sede en el select basándose en el texto.
+    Busca el código de una sede en el select con búsqueda inteligente.
+    
+    Estrategias de búsqueda (en orden):
+    1. Coincidencia exacta (normalizada)
+    2. Una cadena contiene a la otra
+    3. Todas las palabras de búsqueda están presentes
     
     Args:
         driver: WebDriver de Selenium
@@ -86,20 +118,60 @@ def buscar_codigo_sede(driver, texto_sede):
         select_element = driver.find_element(By.ID, "dnn_ctr396_CambioMasivoRemesas_SEDEPROPIETARIO_ANT")
         options = select_element.find_elements(By.TAG_NAME, "option")
         
-        # Normalizar texto de búsqueda (quitar espacios extras, mayúsculas)
-        texto_busqueda = ' '.join(texto_sede.upper().split())
+        # Normalizar texto de búsqueda
+        texto_busqueda = normalizar_texto(texto_sede)
+        palabras_busqueda = texto_busqueda.split()
+        
+        print(f"🔍 Buscando sede: '{texto_sede}' (normalizado: '{texto_busqueda}')")
+        
+        mejores_coincidencias = []
         
         for option in options:
-            texto_option = ' '.join(option.text.upper().split())
+            if option.get_attribute('value') == '0':  # Saltar opción por defecto
+                continue
+                
+            texto_option = normalizar_texto(option.text)
             
-            # Buscar coincidencia exacta o que contenga el texto
-            if texto_busqueda in texto_option or texto_option.startswith(texto_busqueda):
+            # Estrategia 1: Coincidencia exacta
+            if texto_busqueda == texto_option:
+                print(f"   ✅ Coincidencia EXACTA: '{option.text}'")
                 return option.get_attribute('value')
+            
+            # Estrategia 2: Una opción contiene a la otra
+            if texto_busqueda in texto_option:
+                score = len(texto_busqueda) / len(texto_option)  # Mientras más parecidos, mejor
+                mejores_coincidencias.append((option, score, "CONTIENE", option.text))
+            elif texto_option in texto_busqueda:
+                score = len(texto_option) / len(texto_busqueda)
+                mejores_coincidencias.append((option, score, "CONTENIDO", option.text))
+            
+            # Estrategia 3: Todas las palabras de búsqueda están en la opción
+            else:
+                palabras_option = texto_option.split()
+                palabras_encontradas = sum(1 for palabra in palabras_busqueda if palabra in palabras_option)
+                
+                if palabras_encontradas == len(palabras_busqueda):
+                    score = palabras_encontradas / len(palabras_option)
+                    mejores_coincidencias.append((option, score, "PALABRAS", option.text))
+        
+        # Si hay coincidencias, usar la mejor
+        if mejores_coincidencias:
+            mejores_coincidencias.sort(key=lambda x: x[1], reverse=True)
+            mejor = mejores_coincidencias[0]
+            print(f"   ✅ Coincidencia {mejor[2]} (score={mejor[1]:.2f}): '{mejor[3]}'")
+            return mejor[0].get_attribute('value')
+        
+        # No se encontró nada
+        print(f"   ❌ No se encontró coincidencia para '{texto_sede}'")
+        print(f"   📋 Algunas sedes disponibles:")
+        for option in options[:10]:  # Mostrar primeras 10 opciones
+            if option.get_attribute('value') != '0':
+                print(f"      • {option.text}")
         
         return None
     
     except Exception as e:
-        print(f"Error buscando sede '{texto_sede}': {str(e)}")
+        print(f"❌ Error buscando sede '{texto_sede}': {str(e)}")
         return None
 
 

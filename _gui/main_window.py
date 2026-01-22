@@ -126,10 +126,12 @@ class AppGUI:
         Label(self.frame_inicio, text="Seleccione el tipo de proceso", font=("Helvetica", 14, "bold")).pack(pady=20)
         Button(self.frame_inicio, text="Remesas", width=20, command=self.mostrar_frame_remesas).pack(pady=10)
         Button(self.frame_inicio, text="Manifiestos", width=20, command=self.mostrar_frame_manifiestos).pack(pady=10)
+        Button(self.frame_inicio, text="Cambio de Sede", width=20, command=self.mostrar_frame_cambio_sede, bg="#FF9800", fg="white").pack(pady=10)
         self.frame_inicio.pack()
         
         self._setup_remesas()
         self._setup_manifiestos()
+        self._setup_cambio_sede()
     
     def _setup_remesas(self):
         titulo = Label(self.frame_remesas, text="Procesamiento de Remesas", font=("Helvetica", 13, "bold"))
@@ -243,11 +245,13 @@ class AppGUI:
     def mostrar_frame_remesas(self):
         self.frame_inicio.pack_forget()
         self.frame_manifiestos.pack_forget()
+        self.frame_cambio_sede.pack_forget()
         self.frame_remesas.pack()
     
     def mostrar_frame_manifiestos(self):
         self.frame_inicio.pack_forget()
         self.frame_remesas.pack_forget()
+        self.frame_cambio_sede.pack_forget()
         self.frame_manifiestos.pack()
     
     def mostrar_frame_cambio_sede(self):
