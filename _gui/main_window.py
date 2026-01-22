@@ -4,6 +4,7 @@ from tkinter import ttk
 from _core.navegador import crear_driver
 from _core.remesas import ejecutar_remesas, ProcesadorParalelo
 from _core.manifiestos import ejecutar_manifiestos, ProcesadorParaleloManifiestos
+from _core.cambio_sede import ejecutar_cambio_sede
 from _utils.archivos import cargar_codigos_txt
 from _utils.logger import obtener_logger, TipoProceso
 import threading
@@ -20,7 +21,7 @@ class VentanaMonitoreo(Toplevel):
         self.resizable(False, False)
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         
-        Label(self, text="Procesamiento Paralelo de Remesas", font=("Helvetica", 14, "bold")).pack(pady=10)
+        Label(self, text=f"Procesamiento Paralelo de {tipo_proceso}", font=("Helvetica", 14, "bold")).pack(pady=10)
         
         main_frame = Frame(self)
         main_frame.pack(fill="both", expand=True, padx=10, pady=5)
@@ -55,16 +56,12 @@ class VentanaMonitoreo(Toplevel):
         self.continuar_callback = None
         self.cancelar_callback = None
         
-        self.btn_pausar = Button(btn_frame, text="Pausar Todas", command=self.pausar_callback, width=15)
+        self.btn_pausar = Button(btn_frame, text="Pausar Todas", command=lambda: self.pausar_callback() if self.pausar_callback else None, width=15)
         self.btn_pausar.grid(row=0, column=0, padx=5)
-        self.btn_continuar = Button(btn_frame, text="Continuar Todas", command=self.continuar_callback, width=15)
+        self.btn_continuar = Button(btn_frame, text="Continuar Todas", command=lambda: self.continuar_callback() if self.continuar_callback else None, width=15)
         self.btn_continuar.grid(row=0, column=1, padx=5)
-        self.btn_cancelar = Button(btn_frame, text="Cancelar Todas", command=self.cancelar_callback, width=15, bg="red", fg="white")
+        self.btn_cancelar = Button(btn_frame, text="Cancelar Todas", command=lambda: self.cancelar_callback() if self.cancelar_callback else None, width=15, bg="red", fg="white")
         self.btn_cancelar.grid(row=0, column=2, padx=5)
-        
-        self.pausar_callback = None
-        self.continuar_callback = None
-        self.cancelar_callback = None
     
     def _crear_widget_sesion(self, parent, sesion_id):
         frame = Frame(parent, relief="solid", borderwidth=1, bg="white")
@@ -91,7 +88,8 @@ class VentanaMonitoreo(Toplevel):
     
     def actualizar_global(self, procesadas, total, sesiones_completadas, sesiones_totales):
         porcentaje = (procesadas / total * 100) if total > 0 else 0
-        self.label_global.config(text=f"Total: {procesadas}/{total} remesas | Sesiones: {sesiones_completadas}/{sesiones_totales} completadas")
+        tipo = "remesas" if "Remesas" in self.title() else "manifiestos"
+        self.label_global.config(text=f"Total: {procesadas}/{total} {tipo} | Sesiones: {sesiones_completadas}/{sesiones_totales} completadas")
         self.progress_global['value'] = porcentaje
     
     def on_closing(self):
@@ -111,9 +109,11 @@ class AppGUI:
         self.cancelar_flag = False
         self.procesador = None
         self.procesador_manifiestos = None
-        self.num_sesiones_manifiestos = 2
         self.ventana_monitor = None
         self.num_sesiones_seleccionadas = 2
+        self.num_sesiones_manifiestos = 2
+        self.ruta_excel_cambio_sede = None
+        self.frame_cambio_sede = Frame(self.ventana)
         self.frame_inicio = Frame(self.ventana)
         self.frame_remesas = Frame(self.ventana)
         self.frame_manifiestos = Frame(self.ventana)
@@ -188,10 +188,56 @@ class AppGUI:
         self.etiqueta_estado_manifiestos = Label(self.frame_manifiestos, text="", fg="blue")
         self.etiqueta_estado_manifiestos.pack(pady=5)
         Button(self.frame_manifiestos, text="Volver al menu", command=self.mostrar_frame_inicio).pack(pady=15)
+    
+    def _setup_cambio_sede(self):
+        """Configura la interfaz para cambio de sede."""
+        titulo = Label(self.frame_cambio_sede, text="Cambio Masivo de Sede", font=("Helvetica", 13, "bold"))
+        titulo.pack(pady=(10, 15))
+        
+        # Información del proceso
+        info_frame = Frame(self.frame_cambio_sede, relief="solid", borderwidth=1, bg="#FFF3E0")
+        info_frame.pack(pady=10, padx=20, fill="x")
+        
+        Label(info_frame, text="ℹ️ Información del Proceso", font=("Helvetica", 10, "bold"), bg="#FFF3E0").pack(pady=5)
+        Label(info_frame, text="Este proceso cambia la sede del generador de carga en las remesas.", bg="#FFF3E0", font=("Helvetica", 9)).pack(pady=2)
+        Label(info_frame, text="• Lee datos desde un archivo Excel", bg="#FFF3E0", font=("Helvetica", 9), anchor="w").pack(fill="x", padx=10)
+        Label(info_frame, text="• Columnas requeridas: NUMIDPROPIETARIO (NIT) y REM_ORIG (Sede Origen)", bg="#FFF3E0", font=("Helvetica", 9), anchor="w").pack(fill="x", padx=10)
+        Label(info_frame, text="• Sede destino: BOGOTA (Fija)", bg="#FFF3E0", font=("Helvetica", 9), anchor="w").pack(fill="x", padx=10)
+        Label(info_frame, text="• Observaciones: 'error de digitacion' (Fijo)", bg="#FFF3E0", font=("Helvetica", 9), anchor="w").pack(fill="x", padx=10)
+        
+        # Selección de archivo
+        frame_archivo = Frame(self.frame_cambio_sede)
+        frame_archivo.pack(pady=15)
+        Button(frame_archivo, text="📂 Seleccionar Archivo Excel", command=self.seleccionar_excel_cambio_sede, bg="#4CAF50", fg="white", width=25).pack()
+        self.etiqueta_archivo_cambio_sede = Label(frame_archivo, text="", fg="gray")
+        self.etiqueta_archivo_cambio_sede.pack(pady=5)
+        
+        # Estado
+        self.etiqueta_estado_cambio_sede = Label(self.frame_cambio_sede, text="", fg="blue", wraplength=500)
+        self.etiqueta_estado_cambio_sede.pack(pady=10)
+        
+        # Botones de acción
+        btn_frame = Frame(self.frame_cambio_sede)
+        btn_frame.pack(pady=15)
+        
+        self.boton_ejecutar_cambio_sede = Button(
+            btn_frame, 
+            text="▶ Ejecutar Cambio de Sede", 
+            command=self.ejecutar_cambio_sede,
+            bg="#FF9800", 
+            fg="white", 
+            width=25,
+            font=("Helvetica", 10, "bold"),
+            state="disabled"
+        )
+        self.boton_ejecutar_cambio_sede.pack(pady=5)
+        
+        Button(btn_frame, text="⬅ Volver al menú", command=self.mostrar_frame_inicio, width=25).pack(pady=5)
 
     def mostrar_frame_inicio(self):
         self.frame_remesas.pack_forget()
         self.frame_manifiestos.pack_forget()
+        self.frame_cambio_sede.pack_forget()
         self.frame_inicio.pack()
     
     def mostrar_frame_remesas(self):
@@ -204,9 +250,20 @@ class AppGUI:
         self.frame_remesas.pack_forget()
         self.frame_manifiestos.pack()
     
+    def mostrar_frame_cambio_sede(self):
+        """Muestra el frame de cambio de sede."""
+        self.frame_inicio.pack_forget()
+        self.frame_remesas.pack_forget()
+        self.frame_manifiestos.pack_forget()
+        self.frame_cambio_sede.pack()
+    
     def actualizar_num_sesiones(self, valor):
         self.num_sesiones_seleccionadas = int(valor)
         self.label_sesiones.config(text=f"{valor} sesiones")
+    
+    def actualizar_num_sesiones_man(self, valor):
+        self.num_sesiones_manifiestos = int(valor)
+        self.label_sesiones_man.config(text=f"{valor} sesiones")
     
     def seleccionar_archivo_remesas(self):
         archivo = filedialog.askopenfilename(filetypes=[("Archivos TXT", "*.txt")])
@@ -226,6 +283,103 @@ class AppGUI:
             por_sesion = total // self.num_sesiones_manifiestos
             self.etiqueta_estado_manifiestos.config(text=f"{total} manifiestos cargados | ~{por_sesion} por sesion ({self.num_sesiones_manifiestos} sesiones)")
     
+    def seleccionar_excel_cambio_sede(self):
+        """Selecciona el archivo Excel para cambio de sede."""
+        archivo = filedialog.askopenfilename(
+            title="Seleccionar archivo Excel",
+            filetypes=[
+                ("Archivos Excel", "*.xlsx"),
+                ("Archivos Excel", "*.xls"),
+                ("Todos los archivos", "*.*")
+            ]
+        )
+        
+        if archivo:
+            try:
+                # Validar que el archivo tenga las columnas requeridas
+                import pandas as pd
+                df = pd.read_excel(archivo)
+                
+                columnas_requeridas = ['NUMIDPROPIETARIO', 'REM_ORIG']
+                columnas_faltantes = [col for col in columnas_requeridas if col not in df.columns]
+                
+                if columnas_faltantes:
+                    messagebox.showerror(
+                        "Columnas faltantes",
+                        f"El archivo no tiene las columnas requeridas:\n{', '.join(columnas_faltantes)}"
+                    )
+                    return
+                
+                self.ruta_excel_cambio_sede = archivo
+                nombre_archivo = os.path.basename(archivo)
+                total_filas = len(df)
+                
+                self.etiqueta_archivo_cambio_sede.config(text=f"📄 {nombre_archivo}")
+                self.etiqueta_estado_cambio_sede.config(
+                    text=f"✅ {total_filas} registros cargados\nListo para procesar"
+                )
+                self.boton_ejecutar_cambio_sede["state"] = "normal"
+                
+            except Exception as e:
+                messagebox.showerror("Error", f"Error leyendo el archivo:\n{str(e)}")
+                self.etiqueta_estado_cambio_sede.config(text=f"❌ Error: {str(e)}")
+
+    def ejecutar_cambio_sede(self):
+        """Ejecuta el proceso de cambio de sede."""
+        if not self.ruta_excel_cambio_sede:
+            messagebox.showwarning("Sin archivo", "Por favor, seleccione un archivo Excel primero.")
+            return
+        
+        # Confirmar ejecución
+        respuesta = messagebox.askyesno(
+            "Confirmar Ejecución",
+            "¿Está seguro de ejecutar el cambio de sede?\n\n"
+            "Este proceso modificará las remesas según los datos del Excel.\n\n"
+            "Información fija:\n"
+            "• NIT destino: 8600537463\n"
+            "• Sede destino: BOGOTA\n"
+            "• Observación: error de digitacion"
+        )
+        
+        if not respuesta:
+            return
+        
+        # Deshabilitar botones
+        self.boton_ejecutar_cambio_sede["state"] = "disabled"
+        
+        # Resetear flags
+        self.cancelar_flag = False
+        self.pausa_event.set()
+        
+        def run():
+            from _core.navegador import crear_driver
+            driver = crear_driver()
+            try:
+                ejecutar_cambio_sede(
+                    driver,
+                    self.ruta_excel_cambio_sede,
+                    self.actualizar_estado_cambio_sede,
+                    self.pausa_event,
+                    lambda: self.cancelar_flag
+                )
+            finally:
+                # Reactivar botón
+                self.boton_ejecutar_cambio_sede["state"] = "normal"
+                if not self.cancelar_flag:
+                    messagebox.showinfo(
+                        "Proceso Completado",
+                        "El proceso de cambio de sede ha finalizado.\n\n"
+                        "Revise los logs en la carpeta 'logs' para más detalles."
+                    )
+        
+        thread = threading.Thread(target=run, daemon=True)
+        thread.start()
+
+    def actualizar_estado_cambio_sede(self, mensaje):
+        """Actualiza el estado del cambio de sede en la GUI."""
+        self.etiqueta_estado_cambio_sede.config(text=mensaje)
+        self.ventana.update()
+    
     def ejecutar_remesas_paralelo(self):
         if not self.codigos_remesas:
             messagebox.showwarning("Sin datos", "Por favor, cargue un archivo TXT primero.")
@@ -234,30 +388,61 @@ class AppGUI:
             messagebox.showwarning("Pocos datos", f"El archivo tiene {len(self.codigos_remesas)} remesas.\nNo se pueden crear {self.num_sesiones_seleccionadas} sesiones.\nReduzca el numero de sesiones.")
             return
         
-        self.ventana_monitor = VentanaMonitoreo(self.ventana, self.num_sesiones_seleccionadas)
-        self.ventana_monitor.pausar_callback = self.pausar_todas
-        self.ventana_monitor.continuar_callback = self.continuar_todas
-        self.ventana_monitor.cancelar_callback = self.cancelar_todas
+        self.ventana_monitor = VentanaMonitoreo(self.ventana, self.num_sesiones_seleccionadas, "Remesas")
+        self.ventana_monitor.pausar_callback = self.pausar_todas_remesas
+        self.ventana_monitor.continuar_callback = self.continuar_todas_remesas
+        self.ventana_monitor.cancelar_callback = self.cancelar_todas_remesas
         
-        self.procesador = ProcesadorParalelo(self.codigos_remesas, self.num_sesiones_seleccionadas, self.actualizar_sesion_callback)
+        self.procesador = ProcesadorParalelo(self.codigos_remesas, self.num_sesiones_seleccionadas, self.actualizar_sesion_callback_remesas)
         self.procesador.iniciar_todas()
-        self.monitorear_progreso_global()
+        self.monitorear_progreso_global_remesas()
     
-    def actualizar_sesion_callback(self, sesion_id, mensaje, progreso, total):
+    def ejecutar_manifiestos_paralelo(self):
+        if not self.codigos_manifiestos:
+            messagebox.showwarning("Sin datos", "Por favor, cargue un archivo TXT primero.")
+            return
+        if len(self.codigos_manifiestos) < self.num_sesiones_manifiestos:
+            messagebox.showwarning("Pocos datos", f"El archivo tiene {len(self.codigos_manifiestos)} manifiestos.\nNo se pueden crear {self.num_sesiones_manifiestos} sesiones.\nReduzca el numero de sesiones.")
+            return
+        
+        self.ventana_monitor = VentanaMonitoreo(self.ventana, self.num_sesiones_manifiestos, "Manifiestos")
+        self.ventana_monitor.pausar_callback = self.pausar_todas_manifiestos
+        self.ventana_monitor.continuar_callback = self.continuar_todas_manifiestos
+        self.ventana_monitor.cancelar_callback = self.cancelar_todas_manifiestos
+        
+        self.procesador_manifiestos = ProcesadorParaleloManifiestos(self.codigos_manifiestos, self.num_sesiones_manifiestos, self.actualizar_sesion_callback_manifiestos)
+        self.procesador_manifiestos.iniciar_todas()
+        self.monitorear_progreso_global_manifiestos()
+    
+    def actualizar_sesion_callback_remesas(self, sesion_id, mensaje, progreso, total):
         if self.ventana_monitor:
             self.ventana_monitor.actualizar_sesion(sesion_id, mensaje, progreso, total)
     
-    def monitorear_progreso_global(self):
+    def actualizar_sesion_callback_manifiestos(self, sesion_id, mensaje, progreso, total):
+        if self.ventana_monitor:
+            self.ventana_monitor.actualizar_sesion(sesion_id, mensaje, progreso, total)
+    
+    def monitorear_progreso_global_remesas(self):
         if not self.procesador or not self.ventana_monitor:
             return
         stats = self.procesador.obtener_estadisticas()
         self.ventana_monitor.actualizar_global(stats['procesadas'], stats['total'], stats['sesiones_completadas'], stats['sesiones_totales'])
         if self.procesador.todas_completadas():
-            self.mostrar_resumen_final()
+            self.mostrar_resumen_final_remesas()
             return
-        self.ventana.after(1000, self.monitorear_progreso_global)
+        self.ventana.after(1000, self.monitorear_progreso_global_remesas)
     
-    def mostrar_resumen_final(self):
+    def monitorear_progreso_global_manifiestos(self):
+        if not self.procesador_manifiestos or not self.ventana_monitor:
+            return
+        stats = self.procesador_manifiestos.obtener_estadisticas()
+        self.ventana_monitor.actualizar_global(stats['procesadas'], stats['total'], stats['sesiones_completadas'], stats['sesiones_totales'])
+        if self.procesador_manifiestos.todas_completadas():
+            self.mostrar_resumen_final_manifiestos()
+            return
+        self.ventana.after(1000, self.monitorear_progreso_global_manifiestos)
+    
+    def mostrar_resumen_final_remesas(self):
         if not self.procesador:
             return
         stats = self.procesador.obtener_estadisticas()
@@ -280,74 +465,6 @@ Desea cerrar el monitor?
             if self.ventana_monitor:
                 self.ventana_monitor.destroy()
                 self.ventana_monitor = None
-    
-    def pausar_todas(self):
-        if self.procesador:
-            self.procesador.pausar_todas()
-    
-    def continuar_todas(self):
-        if self.procesador:
-            self.procesador.continuar_todas()
-    
-    def cancelar_todas(self):
-        if self.procesador:
-            self.procesador.cancelar_todas()
-    
-    def ejecutar_manifiestos(self):
-        if not self.codigos_manifiestos:
-            messagebox.showwarning("Sin datos", "Por favor, cargue un archivo TXT primero.")
-            return
-        self.cancelar_flag = False
-        self.pausa_event.set()
-        def run():
-            driver = crear_driver()
-            try:
-                ejecutar_manifiestos(driver, self.codigos_manifiestos, self.actualizar_estado_manifiestos, self.pausa_event, lambda: self.cancelar_flag)
-            finally:
-                if not self.cancelar_flag:
-                    logger = obtener_logger(TipoProceso.MANIFIESTO)
-                    messagebox.showinfo("Completado", logger.generar_reporte())
-        thread = threading.Thread(target=run, daemon=True)
-        thread.start()
-    
-    def actualizar_estado_manifiestos(self, mensaje):
-        self.etiqueta_estado_manifiestos.config(text=mensaje)
-        self.ventana.update()
-    
-    def actualizar_num_sesiones_man(self, valor):
-        self.num_sesiones_manifiestos = int(valor)
-        self.label_sesiones_man.config(text=f"{valor} sesiones")
-    
-    def ejecutar_manifiestos_paralelo(self):
-        if not self.codigos_manifiestos:
-            messagebox.showwarning("Sin datos", "Por favor, cargue un archivo TXT primero.")
-            return
-        if len(self.codigos_manifiestos) < self.num_sesiones_manifiestos:
-            messagebox.showwarning("Pocos datos", f"El archivo tiene {len(self.codigos_manifiestos)} manifiestos.\nNo se pueden crear {self.num_sesiones_manifiestos} sesiones.\nReduzca el numero de sesiones.")
-            return
-        
-        self.ventana_monitor = VentanaMonitoreo(self.ventana, self.num_sesiones_manifiestos, "Manifiestos")
-        self.ventana_monitor.pausar_callback = self.pausar_todas_manifiestos
-        self.ventana_monitor.continuar_callback = self.continuar_todas_manifiestos
-        self.ventana_monitor.cancelar_callback = self.cancelar_todas_manifiestos
-        
-        self.procesador_manifiestos = ProcesadorParaleloManifiestos(self.codigos_manifiestos, self.num_sesiones_manifiestos, self.actualizar_sesion_callback_manifiestos)
-        self.procesador_manifiestos.iniciar_todas()
-        self.monitorear_progreso_global_manifiestos()
-    
-    def actualizar_sesion_callback_manifiestos(self, sesion_id, mensaje, progreso, total):
-        if self.ventana_monitor:
-            self.ventana_monitor.actualizar_sesion(sesion_id, mensaje, progreso, total)
-    
-    def monitorear_progreso_global_manifiestos(self):
-        if not self.procesador_manifiestos or not self.ventana_monitor:
-            return
-        stats = self.procesador_manifiestos.obtener_estadisticas()
-        self.ventana_monitor.actualizar_global(stats['procesadas'], stats['total'], stats['sesiones_completadas'], stats['sesiones_totales'])
-        if self.procesador_manifiestos.todas_completadas():
-            self.mostrar_resumen_final_manifiestos()
-            return
-        self.ventana.after(1000, self.monitorear_progreso_global_manifiestos)
     
     def mostrar_resumen_final_manifiestos(self):
         if not self.procesador_manifiestos:
@@ -373,6 +490,18 @@ Desea cerrar el monitor?
                 self.ventana_monitor.destroy()
                 self.ventana_monitor = None
     
+    def pausar_todas_remesas(self):
+        if self.procesador:
+            self.procesador.pausar_todas()
+    
+    def continuar_todas_remesas(self):
+        if self.procesador:
+            self.procesador.continuar_todas()
+    
+    def cancelar_todas_remesas(self):
+        if self.procesador:
+            self.procesador.cancelar_todas()
+    
     def pausar_todas_manifiestos(self):
         if self.procesador_manifiestos:
             self.procesador_manifiestos.pausar_todas()
@@ -384,3 +513,7 @@ Desea cerrar el monitor?
     def cancelar_todas_manifiestos(self):
         if self.procesador_manifiestos:
             self.procesador_manifiestos.cancelar_todas()
+    
+    def actualizar_estado_manifiestos(self, mensaje):
+        self.etiqueta_estado_manifiestos.config(text=mensaje)
+        self.ventana.update()
