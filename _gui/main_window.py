@@ -3,7 +3,7 @@ from tkinter import Tk, Button, Label, Frame, filedialog, Scale, HORIZONTAL, mes
 from tkinter import ttk
 from _core.navegador import crear_driver
 from _core.remesas import ejecutar_remesas, ProcesadorParalelo
-from _core.manifiestos import ejecutar_manifiestos
+from _core.manifiestos import ejecutar_manifiestos, ProcesadorParaleloManifiestos
 from _utils.archivos import cargar_codigos_txt
 from _utils.logger import obtener_logger, TipoProceso
 import threading
@@ -13,9 +13,9 @@ import platform
 
 
 class VentanaMonitoreo(Toplevel):
-    def __init__(self, parent, num_sesiones):
+    def __init__(self, parent, num_sesiones, tipo_proceso="Remesas"):
         super().__init__(parent)
-        self.title("Monitor de Sesiones Paralelas")
+        self.title(f"Monitor de Sesiones Paralelas - {tipo_proceso}")
         self.geometry("800x600")
         self.resizable(False, False)
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -110,6 +110,8 @@ class AppGUI:
         self.pausa_event.set()
         self.cancelar_flag = False
         self.procesador = None
+        self.procesador_manifiestos = None
+        self.num_sesiones_manifiestos = 2
         self.ventana_monitor = None
         self.num_sesiones_seleccionadas = 2
         self.frame_inicio = Frame(self.ventana)
@@ -161,16 +163,32 @@ class AppGUI:
     def _setup_manifiestos(self):
         titulo = Label(self.frame_manifiestos, text="Procesamiento de Manifiestos", font=("Helvetica", 13, "bold"))
         titulo.pack(pady=(10, 15))
+        
         frame_archivo = Frame(self.frame_manifiestos)
         frame_archivo.pack(pady=10)
         Button(frame_archivo, text="Seleccionar Archivo TXT", command=self.seleccionar_archivo_manifiestos).pack()
         self.etiqueta_archivo_manifiestos = Label(frame_archivo, text="", fg="gray")
         self.etiqueta_archivo_manifiestos.pack()
+        
+        frame_config = Frame(self.frame_manifiestos, relief="solid", borderwidth=1)
+        frame_config.pack(pady=15, padx=20, fill="x")
+        Label(frame_config, text="Configuracion de Procesamiento Paralelo", font=("Helvetica", 10, "bold")).pack(pady=5)
+        
+        frame_sesiones_man = Frame(frame_config)
+        frame_sesiones_man.pack(pady=10)
+        Label(frame_sesiones_man, text="Numero de sesiones paralelas:").grid(row=0, column=0, padx=5)
+        self.scale_sesiones_man = Scale(frame_sesiones_man, from_=1, to=5, orient=HORIZONTAL, length=200, command=self.actualizar_num_sesiones_man)
+        self.scale_sesiones_man.set(2)
+        self.scale_sesiones_man.grid(row=0, column=1, padx=5)
+        self.label_sesiones_man = Label(frame_sesiones_man, text="2 sesiones", fg="blue", font=("Helvetica", 10, "bold"))
+        self.label_sesiones_man.grid(row=0, column=2, padx=5)
+        Label(frame_config, text="Cada sesion procesara una parte del archivo en paralelo", fg="gray", font=("Helvetica", 8)).pack(pady=5)
+        
+        Button(self.frame_manifiestos, text="Ejecutar Procesamiento Paralelo", command=self.ejecutar_manifiestos_paralelo, bg="#4CAF50", fg="white", width=35, font=("Helvetica", 10, "bold")).pack(pady=15)
         self.etiqueta_estado_manifiestos = Label(self.frame_manifiestos, text="", fg="blue")
         self.etiqueta_estado_manifiestos.pack(pady=5)
-        Button(self.frame_manifiestos, text="Ejecutar llenado automatico", command=self.ejecutar_manifiestos, bg="#4CAF50", fg="white", width=30).pack(pady=15)
         Button(self.frame_manifiestos, text="Volver al menu", command=self.mostrar_frame_inicio).pack(pady=15)
-    
+
     def mostrar_frame_inicio(self):
         self.frame_remesas.pack_forget()
         self.frame_manifiestos.pack_forget()
@@ -204,7 +222,9 @@ class AppGUI:
         if archivo:
             self.codigos_manifiestos, nombre = cargar_codigos_txt(archivo, 8)
             self.etiqueta_archivo_manifiestos.config(text=f"{nombre}")
-            self.etiqueta_estado_manifiestos.config(text=f"Se cargaron {len(self.codigos_manifiestos)} manifiestos.")
+            total = len(self.codigos_manifiestos)
+            por_sesion = total // self.num_sesiones_manifiestos
+            self.etiqueta_estado_manifiestos.config(text=f"{total} manifiestos cargados | ~{por_sesion} por sesion ({self.num_sesiones_manifiestos} sesiones)")
     
     def ejecutar_remesas_paralelo(self):
         if not self.codigos_remesas:
@@ -293,3 +313,74 @@ Desea cerrar el monitor?
     def actualizar_estado_manifiestos(self, mensaje):
         self.etiqueta_estado_manifiestos.config(text=mensaje)
         self.ventana.update()
+    
+    def actualizar_num_sesiones_man(self, valor):
+        self.num_sesiones_manifiestos = int(valor)
+        self.label_sesiones_man.config(text=f"{valor} sesiones")
+    
+    def ejecutar_manifiestos_paralelo(self):
+        if not self.codigos_manifiestos:
+            messagebox.showwarning("Sin datos", "Por favor, cargue un archivo TXT primero.")
+            return
+        if len(self.codigos_manifiestos) < self.num_sesiones_manifiestos:
+            messagebox.showwarning("Pocos datos", f"El archivo tiene {len(self.codigos_manifiestos)} manifiestos.\nNo se pueden crear {self.num_sesiones_manifiestos} sesiones.\nReduzca el numero de sesiones.")
+            return
+        
+        self.ventana_monitor = VentanaMonitoreo(self.ventana, self.num_sesiones_manifiestos, "Manifiestos")
+        self.ventana_monitor.pausar_callback = self.pausar_todas_manifiestos
+        self.ventana_monitor.continuar_callback = self.continuar_todas_manifiestos
+        self.ventana_monitor.cancelar_callback = self.cancelar_todas_manifiestos
+        
+        self.procesador_manifiestos = ProcesadorParaleloManifiestos(self.codigos_manifiestos, self.num_sesiones_manifiestos, self.actualizar_sesion_callback_manifiestos)
+        self.procesador_manifiestos.iniciar_todas()
+        self.monitorear_progreso_global_manifiestos()
+    
+    def actualizar_sesion_callback_manifiestos(self, sesion_id, mensaje, progreso, total):
+        if self.ventana_monitor:
+            self.ventana_monitor.actualizar_sesion(sesion_id, mensaje, progreso, total)
+    
+    def monitorear_progreso_global_manifiestos(self):
+        if not self.procesador_manifiestos or not self.ventana_monitor:
+            return
+        stats = self.procesador_manifiestos.obtener_estadisticas()
+        self.ventana_monitor.actualizar_global(stats['procesadas'], stats['total'], stats['sesiones_completadas'], stats['sesiones_totales'])
+        if self.procesador_manifiestos.todas_completadas():
+            self.mostrar_resumen_final_manifiestos()
+            return
+        self.ventana.after(1000, self.monitorear_progreso_global_manifiestos)
+    
+    def mostrar_resumen_final_manifiestos(self):
+        if not self.procesador_manifiestos:
+            return
+        stats = self.procesador_manifiestos.obtener_estadisticas()
+        mensaje = f"""
+===============================
+   PROCESAMIENTO COMPLETADO
+===============================
+
+Total Procesados: {stats['procesadas']} / {stats['total']}
+Porcentaje: {stats['porcentaje']:.1f}%
+Sesiones: {stats['sesiones_completadas']} / {stats['sesiones_totales']}
+
+===============================
+
+Los logs detallados estan en _logs/
+
+Desea cerrar el monitor?
+"""
+        if messagebox.askyesno("Proceso Completado", mensaje):
+            if self.ventana_monitor:
+                self.ventana_monitor.destroy()
+                self.ventana_monitor = None
+    
+    def pausar_todas_manifiestos(self):
+        if self.procesador_manifiestos:
+            self.procesador_manifiestos.pausar_todas()
+    
+    def continuar_todas_manifiestos(self):
+        if self.procesador_manifiestos:
+            self.procesador_manifiestos.continuar_todas()
+    
+    def cancelar_todas_manifiestos(self):
+        if self.procesador_manifiestos:
+            self.procesador_manifiestos.cancelar_todas()

@@ -20,6 +20,8 @@ from _utils.esperas import (
     esperar_valor_campo_cargado,
     esperar_ajax_completo
 )
+import threading
+import time
 
 
 # ============================================================================
@@ -436,3 +438,104 @@ def ejecutar_manifiestos(driver, codigos, actualizar_estado_callback, pausa_even
                 "Proceso completado",
                 f"Los manifiestos fueron procesados.\n\n{logger.generar_reporte()}"
             )
+
+class SesionManifiesto:
+    def __init__(self, sesion_id, codigos, actualizar_callback):
+        self.sesion_id = sesion_id
+        self.codigos = codigos
+        self.actualizar_callback = actualizar_callback
+        self.driver = None
+        self.thread = None
+        self.pausa_event = threading.Event()
+        self.pausa_event.set()
+        self.cancelar_flag = False
+        self.completado = False
+        self.progreso = 0
+        self.total = len(codigos)
+        
+    def actualizar_estado(self, mensaje):
+        if "Procesando manifiesto" in mensaje:
+            self.progreso += 1
+        self.actualizar_callback(self.sesion_id, mensaje, self.progreso, self.total)
+    
+    def iniciar(self):
+        def run():
+            try:
+                from _core.navegador import crear_driver
+                self.driver = crear_driver()
+                ejecutar_manifiestos(self.driver, self.codigos, self.actualizar_estado, self.pausa_event, lambda: self.cancelar_flag)
+                self.completado = True
+                self.actualizar_estado("Sesion completada")
+            except Exception as e:
+                self.actualizar_estado(f"Error: {str(e)[:50]}")
+            finally:
+                if self.driver:
+                    try:
+                        self.driver.quit()
+                    except:
+                        pass
+        self.thread = threading.Thread(target=run, daemon=True)
+        self.thread.start()
+    
+    def pausar(self):
+        self.pausa_event.clear()
+    
+    def continuar(self):
+        self.pausa_event.set()
+    
+    def cancelar(self):
+        self.cancelar_flag = True
+        self.pausa_event.set()
+
+
+class ProcesadorParaleloManifiestos:
+    def __init__(self, codigos_totales, num_sesiones, actualizar_callback):
+        self.codigos_totales = codigos_totales
+        self.num_sesiones = num_sesiones
+        self.actualizar_callback = actualizar_callback
+        self.sesiones = []
+        self._dividir_codigos()
+    
+    def _dividir_codigos(self):
+        total = len(self.codigos_totales)
+        tamanio_parte = total // self.num_sesiones
+        resto = total % self.num_sesiones
+        inicio = 0
+        for i in range(self.num_sesiones):
+            fin = inicio + tamanio_parte + (1 if i < resto else 0)
+            codigos_sesion = self.codigos_totales[inicio:fin]
+            sesion = SesionManifiesto(i + 1, codigos_sesion, self.actualizar_callback)
+            self.sesiones.append(sesion)
+            inicio = fin
+    
+    def iniciar_todas(self):
+        for sesion in self.sesiones:
+            sesion.iniciar()
+            time.sleep(2)
+    
+    def pausar_todas(self):
+        for s in self.sesiones:
+            s.pausar()
+    
+    def continuar_todas(self):
+        for s in self.sesiones:
+            s.continuar()
+    
+    def cancelar_todas(self):
+        for s in self.sesiones:
+            s.cancelar()
+    
+    def obtener_estadisticas(self):
+        total_procesadas = sum(s.progreso for s in self.sesiones)
+        total_codigos = sum(s.total for s in self.sesiones)
+        sesiones_completadas = sum(1 for s in self.sesiones if s.completado)
+        return {
+            'procesadas': total_procesadas,
+            'total': total_codigos,
+            'porcentaje': (total_procesadas / total_codigos * 100) if total_codigos > 0 else 0,
+            'sesiones_completadas': sesiones_completadas,
+            'sesiones_totales': self.num_sesiones
+        }
+    
+    def todas_completadas(self):
+        return all(s.completado or s.cancelar_flag for s in self.sesiones)
