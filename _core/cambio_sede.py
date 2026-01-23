@@ -14,6 +14,7 @@ import pandas as pd
 import unicodedata
 from _utils.logger import registrar_log_remesa
 from _core.common import hacer_login
+from datetime import datetime
 
 
 # ============================================================================
@@ -21,7 +22,7 @@ from _core.common import hacer_login
 # ============================================================================
 URL_CAMBIO_SEDE = "https://rndc.mintransporte.gov.co/programasRNDC/creardocumento/tabid/69/ctl/CambioMasivoRemesas/mid/396/procesoid/4/default.aspx"
 NIT_EMPRESA = "8600537463"
-SEDE_DESTINO = "10"  # Código de BOGOTA
+SEDE_DESTINO = "+020"  # Código de BOGOTA específico solicitado
 OBSERVACIONES = "error de digitacion"
 
 
@@ -50,22 +51,32 @@ def cargar_datos_excel(ruta_archivo):
         df = pd.read_excel(ruta_archivo)
         
         # Validar columnas necesarias
-        columnas_requeridas = ['NUMIDPROPIETARIO', 'REM_ORIG']
+        columnas_requeridas = ['NUMIDPROPIETARIO', 'REM_ORIG', 'CONSECUTIVOREMESA']
         for col in columnas_requeridas:
             if col not in df.columns:
                 raise ValueError(f"Columna requerida '{col}' no encontrada en el Excel")
         
-        # Extraer datos
+        # Extraer datos conservando toda la fila original
         datos = []
         for idx, row in df.iterrows():
+            # Obtener diccionario con todos los datos originales
+            fila_data = row.to_dict()
+            
+            # Procesar datos específicos para el bot
             nit_generador = str(int(row['NUMIDPROPIETARIO']))  # Convertir a string sin decimales
             sede_origen = str(row['REM_ORIG']).strip()
+            consecutivo = str(row['CONSECUTIVOREMESA']).strip()
+            # Si consecutivo tiene decimales (ej 123.0), quitarlo
+            if consecutivo.endswith('.0'):
+                consecutivo = consecutivo[:-2]
             
-            datos.append({
-                'nit_generador': nit_generador,
-                'sede_origen': sede_origen,
-                'fila': idx + 2  # +2 porque Excel empieza en 1 y tiene header
-            })
+            # Agregar datos procesados al diccionario
+            fila_data['nit_generador'] = nit_generador
+            fila_data['sede_origen'] = sede_origen
+            fila_data['consecutivo'] = consecutivo
+            fila_data['fila'] = idx + 2  # +2 porque Excel empieza en 1 y tiene header
+            
+            datos.append(fila_data)
         
         return datos
     
@@ -98,7 +109,7 @@ def normalizar_texto(texto):
     return texto
 
 
-def buscar_codigo_sede(driver, texto_sede):
+def buscar_codigo_sede(driver, texto_sede, element_id, usar_fallback=True):
     """
     Busca el código de una sede en el select con búsqueda inteligente.
     
@@ -106,28 +117,33 @@ def buscar_codigo_sede(driver, texto_sede):
     1. Coincidencia exacta (normalizada)
     2. Una cadena contiene a la otra
     3. Todas las palabras de búsqueda están presentes
+    4. FALLBACK: Si no encuentra nada y usar_fallback=True, busca BOGOTA
     
     Args:
         driver: WebDriver de Selenium
         texto_sede: Texto a buscar (ej: "MEDELLIN ANTIOQUIA")
+        element_id: ID del elemento Select en el HTML
+        usar_fallback: Si True, busca BOGOTA cuando no encuentra la sede
     
     Returns:
-        str: Código de la sede encontrada o None
+        tuple: (codigo_sede, es_fallback)
+               - codigo_sede: Código de la sede encontrada o None
+               - es_fallback: True si se usó BOGOTA como fallback
     """
     try:
-        select_element = driver.find_element(By.ID, "dnn_ctr396_CambioMasivoRemesas_SEDEPROPIETARIO_ANT")
+        select_element = driver.find_element(By.ID, element_id)
         options = select_element.find_elements(By.TAG_NAME, "option")
         
         # Normalizar texto de búsqueda
         texto_busqueda = normalizar_texto(texto_sede)
         palabras_busqueda = texto_busqueda.split()
         
-        print(f"🔍 Buscando sede: '{texto_sede}' (normalizado: '{texto_busqueda}')")
+        print(f"🔍 Buscando sede: '{texto_sede}' (normalizado: '{texto_busqueda}') en {element_id}")
         
         mejores_coincidencias = []
         
         for option in options:
-            if option.get_attribute('value') == '0':  # Saltar opción por defecto
+            if option.get_attribute('value') == '0' or not option.get_attribute('value'):  # Saltar opción por defecto
                 continue
                 
             texto_option = normalizar_texto(option.text)
@@ -135,7 +151,7 @@ def buscar_codigo_sede(driver, texto_sede):
             # Estrategia 1: Coincidencia exacta
             if texto_busqueda == texto_option:
                 print(f"   ✅ Coincidencia EXACTA: '{option.text}'")
-                return option.get_attribute('value')
+                return option.get_attribute('value'), False
             
             # Estrategia 2: Una opción contiene a la otra
             if texto_busqueda in texto_option:
@@ -159,20 +175,38 @@ def buscar_codigo_sede(driver, texto_sede):
             mejores_coincidencias.sort(key=lambda x: x[1], reverse=True)
             mejor = mejores_coincidencias[0]
             print(f"   ✅ Coincidencia {mejor[2]} (score={mejor[1]:.2f}): '{mejor[3]}'")
-            return mejor[0].get_attribute('value')
+            return mejor[0].get_attribute('value'), False
         
-        # No se encontró nada
-        print(f"   ❌ No se encontró coincidencia para '{texto_sede}'")
+        # No se encontró nada - INTENTAR FALLBACK A BOGOTA
+        if usar_fallback:
+            print(f"   ⚠️  No se encontró '{texto_sede}', buscando BOGOTA como fallback...")
+            
+            # Buscar BOGOTA en las opciones
+            for option in options:
+                if option.get_attribute('value') == '0' or not option.get_attribute('value'):
+                    continue
+                
+                texto_option = normalizar_texto(option.text)
+                
+                # Buscar opciones que contengan BOGOTA
+                if 'BOGOTA' in texto_option:
+                    print(f"   🔄 Usando FALLBACK: '{option.text}'")
+                    return option.get_attribute('value'), True
+            
+            print(f"   ❌ No se encontró ni '{texto_sede}' ni BOGOTA como fallback")
+        else:
+            print(f"   ❌ No se encontró coincidencia para '{texto_sede}'")
+        
         print(f"   📋 Algunas sedes disponibles:")
         for option in options[:10]:  # Mostrar primeras 10 opciones
-            if option.get_attribute('value') != '0':
+            if option.get_attribute('value') and option.get_attribute('value') != '0':
                 print(f"      • {option.text}")
         
-        return None
+        return None, False
     
     except Exception as e:
         print(f"❌ Error buscando sede '{texto_sede}': {str(e)}")
-        return None
+        return None, False
 
 
 # ============================================================================
@@ -184,7 +218,7 @@ def llenar_formulario_cambio_sede(driver, datos_fila):
     
     Args:
         driver: WebDriver de Selenium
-        datos_fila: Diccionario con 'nit_generador' y 'sede_origen'
+        datos_fila: Diccionario con 'nit_generador', 'sede_origen', y 'consecutivo'
     
     Returns:
         bool: True si se llenó correctamente, False si hubo error
@@ -192,6 +226,7 @@ def llenar_formulario_cambio_sede(driver, datos_fila):
     try:
         nit_generador = datos_fila['nit_generador']
         sede_origen = datos_fila['sede_origen']
+        consecutivo = datos_fila['consecutivo']
         fila = datos_fila['fila']
         
         # 1. Seleccionar tipo de identificación ANTERIOR (NIT)
@@ -211,17 +246,26 @@ def llenar_formulario_cambio_sede(driver, datos_fila):
         # Esperar a que se carguen las sedes
         time.sleep(3)
         
-        # 3. Buscar y seleccionar la sede de origen
-        codigo_sede_origen = buscar_codigo_sede(driver, sede_origen)
+        # 3. Buscar y seleccionar la sede de origen (con fallback a BOGOTA)
+        id_sede_origen = "dnn_ctr396_CambioMasivoRemesas_SEDEPROPIETARIO_ANT"
+        codigo_sede_origen, es_fallback = buscar_codigo_sede(driver, sede_origen, id_sede_origen, usar_fallback=True)
         
         if not codigo_sede_origen:
-            print(f"⚠️ Fila {fila}: No se encontró la sede '{sede_origen}' para NIT {nit_generador}")
+            print(f"❌ Fila {fila}: No se encontró la sede '{sede_origen}' ni BOGOTA para NIT {nit_generador}")
             registrar_log_remesa(
                 f"Fila {fila}",
-                f"Sede no encontrada: '{sede_origen}'",
+                f"Sede no encontrada: '{sede_origen}' (sin fallback disponible)",
                 []
             )
             return False
+        
+        if es_fallback:
+            print(f"🔄 Fila {fila}: Usando BOGOTA en lugar de '{sede_origen}' para NIT {nit_generador}")
+            registrar_log_remesa(
+                f"Fila {fila}",
+                f"Usando BOGOTA como fallback para '{sede_origen}'",
+                []
+            )
         
         select_sede_element_ant = driver.find_element(By.ID, "dnn_ctr396_CambioMasivoRemesas_SEDEPROPIETARIO_ANT")
         select_sede_ant = Select(select_sede_element_ant)
@@ -229,15 +273,29 @@ def llenar_formulario_cambio_sede(driver, datos_fila):
         # TAB para disparar evento
         select_sede_element_ant.send_keys(Keys.TAB)
         
-        # Esperar a que se carguen los datos y las fechas
-        time.sleep(3)
+        # Esperar a que se carguen los datos
+        time.sleep(2)
         
-        # 4. Verificar cuántas remesas se encontraron
+        # 4. Ingresar CONSECUTIVO DE REMESA (Columna K)
+        # Este paso faltaba y es crucial según las instrucciones
+        try:
+            input_consecutivo = driver.find_element(By.ID, "dnn_ctr396_CambioMasivoRemesas_CONSECUTIVOREMESA")
+            input_consecutivo.clear()
+            input_consecutivo.send_keys(consecutivo)
+            input_consecutivo.send_keys(Keys.TAB)
+            print(f"   📝 Ingresando consecutivo: {consecutivo}")
+        except Exception as e:
+            print(f"   ⚠️ No se pudo ingresar el consecutivo: {str(e)}")
+
+        # Esperar un momento después del consecutivo
+        time.sleep(2)
+        
+        # 5. Verificar cuántas remesas se encontraron
         try:
             remesas_encontradas = driver.find_element(By.ID, "dnn_ctr396_CambioMasivoRemesas_REMESAS").get_attribute("value")
             
             if not remesas_encontradas or remesas_encontradas == "0":
-                print(f"⚠️ Fila {fila}: No se encontraron remesas para NIT {nit_generador} sede '{sede_origen}'")
+                print(f"⚠️ Fila {fila}: No se encontraron remesas para NIT {nit_generador} sede '{sede_origen}' consecutivo {consecutivo}")
                 return False
             
             print(f"✅ Fila {fila}: Encontradas {remesas_encontradas} remesas para NIT {nit_generador}")
@@ -245,7 +303,7 @@ def llenar_formulario_cambio_sede(driver, datos_fila):
         except Exception:
             pass  # Continuar si no se puede leer
         
-        # 5. Seleccionar tipo de identificación NUEVO (NIT)
+        # 6. Seleccionar tipo de identificación NUEVO (NIT)
         select_element_nuevo = driver.find_element(By.ID, "dnn_ctr396_CambioMasivoRemesas_TIPOIDPROPIETARIO")
         select_tipo_nuevo = Select(select_element_nuevo)
         select_tipo_nuevo.select_by_value("N")
@@ -253,7 +311,7 @@ def llenar_formulario_cambio_sede(driver, datos_fila):
         select_element_nuevo.send_keys(Keys.TAB)
         time.sleep(0.5)
         
-        # 6. Ingresar NIT de la empresa (hardcoded)
+        # 7. Ingresar NIT de la empresa (hardcoded)
         input_nit_nuevo = driver.find_element(By.ID, "dnn_ctr396_CambioMasivoRemesas_NUMIDPROPIETARIO")
         input_nit_nuevo.clear()
         input_nit_nuevo.send_keys(NIT_EMPRESA)
@@ -262,15 +320,16 @@ def llenar_formulario_cambio_sede(driver, datos_fila):
         # Esperar a que se carguen las sedes
         time.sleep(3)
         
-        # 7. Seleccionar sede destino (BOGOTA)
-        select_sede_element_nuevo = driver.find_element(By.ID, "dnn_ctr396_CambioMasivoRemesas_SEDEPROPIETARIOLISTA")
+        # 8. Seleccionar sede destino (BOGOTA)
+        id_sede_destino = "dnn_ctr396_CambioMasivoRemesas_SEDEPROPIETARIOLISTA"
+        select_sede_element_nuevo = driver.find_element(By.ID, id_sede_destino)
         select_sede_nuevo = Select(select_sede_element_nuevo)
         select_sede_nuevo.select_by_value(SEDE_DESTINO)
         # TAB para disparar evento
         select_sede_element_nuevo.send_keys(Keys.TAB)
         time.sleep(1)
         
-        # 8. Ingresar observaciones
+        # 9. Ingresar observaciones
         input_obs = driver.find_element(By.ID, "dnn_ctr396_CambioMasivoRemesas_OBSERVACIONES")
         input_obs.clear()
         input_obs.send_keys(OBSERVACIONES)
@@ -298,7 +357,7 @@ def guardar_y_capturar_radicado(driver, datos_fila, actualizar_estado_callback):
     Guarda el formulario y captura el número de radicado.
     
     Returns:
-        tuple: (exito, radicado)
+        tuple: (exito, radicado, mensaje)
     """
     fila = datos_fila['fila']
     nit_generador = datos_fila['nit_generador']
@@ -310,10 +369,11 @@ def guardar_y_capturar_radicado(driver, datos_fila, actualizar_estado_callback):
         
         # Esperar la alerta de confirmación
         try:
-            WebDriverWait(driver, 10).until(EC.alert_is_present())
+            WebDriverWait(driver, 30).until(EC.alert_is_present())
             alerta = driver.switch_to.alert
             texto_alerta = alerta.text
             alerta.accept()
+            time.sleep(2)  # Esperar un momento a que se cierre la alerta
             
             # Extraer número de radicado
             # Formato: "Ha sido creado el Cambio Masivo de Generador en Remesas con el radicado:1324357"
@@ -326,7 +386,7 @@ def guardar_y_capturar_radicado(driver, datos_fila, actualizar_estado_callback):
                     [("NIT", nit_generador)]
                 )
                 actualizar_estado_callback(f"✅ Fila {fila} - Radicado: {radicado}")
-                return True, radicado
+                return True, radicado, texto_alerta
             else:
                 # Alerta con otro mensaje
                 print(f"⚠️ Fila {fila} - Alerta: {texto_alerta}")
@@ -336,7 +396,7 @@ def guardar_y_capturar_radicado(driver, datos_fila, actualizar_estado_callback):
                     [("NIT", nit_generador)]
                 )
                 actualizar_estado_callback(f"⚠️ Fila {fila} - {texto_alerta[:50]}")
-                return False, None
+                return False, None, texto_alerta
         
         except TimeoutException:
             # No apareció alerta
@@ -347,7 +407,7 @@ def guardar_y_capturar_radicado(driver, datos_fila, actualizar_estado_callback):
                 [("NIT", nit_generador)]
             )
             actualizar_estado_callback(f"❌ Fila {fila} - Sin alerta de confirmación")
-            return False, None
+            return False, None, "No apareció alerta de confirmación"
     
     except Exception as e:
         print(f"❌ Error guardando fila {fila}: {str(e)}")
@@ -357,7 +417,7 @@ def guardar_y_capturar_radicado(driver, datos_fila, actualizar_estado_callback):
             [("NIT", nit_generador)]
         )
         actualizar_estado_callback(f"❌ Fila {fila} - Error: {str(e)[:50]}")
-        return False, None
+        return False, None, f"Error excepción: {str(e)}"
 
 
 # ============================================================================
@@ -393,12 +453,25 @@ def ejecutar_cambio_sede(driver, ruta_excel, actualizar_estado_callback, pausa_e
         # Procesar cada fila
         exitosos = 0
         fallidos = 0
-        radicados = []
+        reporte_data = [] # Lista para almacenar el reporte completo
         
         for idx, datos_fila in enumerate(datos, 1):
+            # Inicializar tracking de la fila actual
+            # Copiar todos los datos originales
+            fila_reporte = datos_fila.copy()
+            
+            # Agregar datos de operación
+            fila_reporte['FECHA_PROCESO'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            fila_reporte['NIT_NUEVO_USADO'] = NIT_EMPRESA
+            fila_reporte['SEDE_NUEVA_USADA'] = "BOGOTA (" + SEDE_DESTINO + ")"
+            fila_reporte['OBSERVACIONES_USADAS'] = OBSERVACIONES
+            
             # Verificar cancelación
             if cancelar_func():
                 actualizar_estado_callback("⛔ Proceso cancelado por el usuario")
+                fila_reporte['RESULTADO_PROCESO'] = "CANCELADO POR USUARIO"
+                fila_reporte['MENSAJE_PROCESO'] = "Proceso detenido manualmente"
+                reporte_data.append(fila_reporte)
                 break
             
             # Verificar pausa
@@ -416,18 +489,29 @@ def ejecutar_cambio_sede(driver, ruta_excel, actualizar_estado_callback, pausa_e
             if not llenar_formulario_cambio_sede(driver, datos_fila):
                 actualizar_estado_callback(f"❌ Fila {fila} - Error llenando formulario")
                 fallidos += 1
+                fila_reporte['RESULTADO_PROCESO'] = "FALLIDO"
+                fila_reporte['MENSAJE_PROCESO'] = "No se pudo llenar el formulario (posiblemente no se encontró sede o remesas)"
+                fila_reporte['RADICADO_GENERADO'] = ""
+                reporte_data.append(fila_reporte)
+                
                 navegar_a_formulario(driver)
                 continue
             
             # Guardar y obtener radicado
-            exito, radicado = guardar_y_capturar_radicado(driver, datos_fila, actualizar_estado_callback)
+            exito, radicado, mensaje = guardar_y_capturar_radicado(driver, datos_fila, actualizar_estado_callback)
+            
+            fila_reporte['MENSAJE_PROCESO'] = mensaje if mensaje else "Error desconocido"
             
             if exito:
                 exitosos += 1
-                if radicado:
-                    radicados.append({'fila': fila, 'nit': nit, 'radicado': radicado})
+                fila_reporte['RESULTADO_PROCESO'] = "EXITOSO"
+                fila_reporte['RADICADO_GENERADO'] = radicado if radicado else ""
             else:
                 fallidos += 1
+                fila_reporte['RESULTADO_PROCESO'] = "FALLIDO"
+                fila_reporte['RADICADO_GENERADO'] = ""
+            
+            reporte_data.append(fila_reporte)
             
             # Recargar formulario para siguiente registro
             navegar_a_formulario(driver)
@@ -438,12 +522,30 @@ def ejecutar_cambio_sede(driver, ruta_excel, actualizar_estado_callback, pausa_e
         actualizar_estado_callback(mensaje_final)
         print(f"\n{mensaje_final}")
         
-        # Generar reporte de radicados
-        if radicados:
-            reporte = "\n=== RADICADOS GENERADOS ===\n"
-            for r in radicados:
-                reporte += f"Fila {r['fila']} | NIT: {r['nit']} | Radicado: {r['radicado']}\n"
-            print(reporte)
+        # Generar Reporte Excel Detallado
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        nombre_reporte = f"reporte_cambio_sede_{timestamp}.xlsx"
+        
+        try:
+            actualizar_estado_callback(f"📊 Generando reporte detallado: {nombre_reporte}")
+            df_reporte = pd.DataFrame(reporte_data)
+            
+            # Asegurarse que fila, nit, etc. no queden duplicados si ya venían del excel
+            # Pandas se encarga, pero ordenemos las columas importantes al inicio si es posible
+            cols_prioridad = ['fila', 'nit_generador', 'RESULTADO_PROCESO', 'RADICADO_GENERADO', 'MENSAJE_PROCESO']
+            cols = list(df_reporte.columns)
+            
+            # Reordenar para poner prioridad al inicio, resto después
+            cols_final = [c for c in cols_prioridad if c in cols] + [c for c in cols if c not in cols_prioridad]
+            df_reporte = df_reporte[cols_final]
+            
+            df_reporte.to_excel(nombre_reporte, index=False)
+            print(f"✅ Reporte guardado en: {nombre_reporte}")
+            actualizar_estado_callback(f"✅ Reporte guardado: {nombre_reporte}")
+            
+        except Exception as e:
+            print(f"❌ Error generando reporte Excel: {str(e)}")
+            actualizar_estado_callback(f"❌ Error generando reporte: {str(e)}")
         
     except Exception as e:
         error_msg = f"❌ Error general: {str(e)}"
