@@ -1,7 +1,5 @@
 """
 Módulo para cambio masivo de sede en remesas RNDC.
-Lee datos desde Excel y realiza cambios de generador/sede en el sistema.
-VERSIÓN MEJORADA con búsqueda inteligente de sedes.
 """
 
 from selenium.webdriver.common.by import By
