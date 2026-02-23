@@ -9,17 +9,19 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.keys import Keys
 from datetime import datetime, timedelta
+from tkinter import messagebox
 import time
 import os
 import json
-from _utils.logger import registrar_log_remesa, obtener_logger, TipoProceso
-from _core.navegador import crear_driver
 from _utils.esperas import (
     esperar_pagina_cargada,
     esperar_elemento_interactivo,
     esperar_valor_campo_cargado,
     esperar_ajax_completo
 )
+from _utils.logger import registrar_log_remesa, obtener_logger, TipoProceso
+from _core.navegador import crear_driver
+from _core.common import hacer_login, navegar_a_manifiestos, TIMEOUT_MEDIO
 import threading
 import time
 
@@ -77,34 +79,9 @@ def limpiar_checkpoint():
 # ============================================================================
 # FUNCIONES DE NAVEGACIÓN (Basadas en la versión original)
 # ============================================================================
-def hacer_login(driver):
-    """Realiza el login en el sistema RNDC."""
-    driver.get("https://rndc.mintransporte.gov.co/MenuPrincipal/tabid/204/language/es-MX/Default.aspx?returnurl=%2fMenuPrincipal%2ftabid%2f204%2flanguage%2fes-MX%2fDefault.aspx")
-    WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.ID, "dnn_ctr580_FormLogIn_edUsername"))
-    )
+# Las funciones navegar_a_formulario y hacer_login han sido reemplazadas por 
+# navegar_a_manifiestos y hacer_login de _core.common
 
-    usuario = "Sotranscolombianos1@0341"
-    contrasena = "053EPA746**"
-
-    driver.find_element(By.ID, "dnn_ctr580_FormLogIn_edUsername").send_keys(usuario)
-    driver.find_element(By.ID, "dnn_ctr580_FormLogIn_edPassword").send_keys(contrasena)
-    driver.find_element(By.ID, "dnn_ctr580_FormLogIn_btIngresar").click()
-
-    WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.ID, "tddnn_dnnSOLPARTMENU_ctldnnSOLPARTMENU120"))
-    )
-
-
-def navegar_a_formulario(driver):
-    """Navega al formulario de manifiestos."""
-    driver.execute_script("window.localStorage.clear();")
-    driver.execute_script("window.sessionStorage.clear();")
-
-    driver.get("https://rndc.mintransporte.gov.co/programasRNDC/creardocumento/tabid/69/ctl/CumplirManifiesto/mid/396/procesoid/6/default.aspx")
-    WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.ID, "dnn_ctr396_CumplirManifiesto_NUMMANIFIESTOCARGA"))
-    )
 
 
 # ============================================================================
@@ -203,16 +180,16 @@ def guardar_y_manejar_alertas(driver, codigo, actualizar_estado_callback, campos
         
         try:
             # OPTIMIZACIÓN: Esperar a que la página esté completamente cargada
-            esperar_pagina_cargada(driver, timeout=10)
+            esperar_pagina_cargada(driver, timeout=TIMEOUT_MEDIO)
             
-            navegar_a_formulario(driver)
+            navegar_a_manifiestos(driver)
             campos = llenar_formulario_manifiesto(driver, codigo)
 
             # OPTIMIZACIÓN: Esperar a que la página esté lista nuevamente
-            esperar_pagina_cargada(driver, timeout=10)
+            esperar_pagina_cargada(driver, timeout=TIMEOUT_MEDIO)
             
             # OPTIMIZACIÓN: Esperar a que el campo de flete sea interactivo
-            flete_elemento = esperar_elemento_interactivo(driver, By.ID, flete_id, timeout=10)
+            flete_elemento = esperar_elemento_interactivo(driver, By.ID, flete_id, timeout=TIMEOUT_MEDIO)
             if not flete_elemento:
                 raise Exception(f"Campo {flete_id} no está interactivo")
             
@@ -225,7 +202,7 @@ def guardar_y_manejar_alertas(driver, codigo, actualizar_estado_callback, campos
             
             # Solo establecer motivo si el valor > 0
             if valor > 0:
-                motivo_elemento = esperar_elemento_interactivo(driver, By.ID, motivo_flete_id, timeout=10)
+                motivo_elemento = esperar_elemento_interactivo(driver, By.ID, motivo_flete_id, timeout=TIMEOUT_MEDIO)
                 if not motivo_elemento:
                     raise Exception(f"Campo {motivo_flete_id} no está interactivo")
                 
@@ -317,7 +294,7 @@ def guardar_y_manejar_alertas(driver, codigo, actualizar_estado_callback, campos
             except TimeoutException:
                 # No hubo alerta - verificar si se guardó correctamente
                 try:
-                    WebDriverWait(driver, 10).until(
+                    WebDriverWait(driver, TIMEOUT_MEDIO).until(
                         EC.presence_of_element_located((By.ID, "dnn_ctr396_CumplirManifiestoNew_btNuevo"))
                     )
                     
@@ -389,7 +366,6 @@ def ejecutar_manifiestos(driver, codigos, actualizar_estado_callback, pausa_even
     
     try:
         hacer_login(driver)
-        navegar_a_formulario(driver)
 
         for codigo in codigos:
             # Verificar cancelación
@@ -401,7 +377,7 @@ def ejecutar_manifiestos(driver, codigos, actualizar_estado_callback, pausa_even
             actualizar_estado_callback(f"Procesando manifiesto {codigo}...")
             pausa_event.wait()  # Espera si el proceso está pausado
             
-            navegar_a_formulario(driver)
+            navegar_a_manifiestos(driver)
             
             try:
                 campos = llenar_formulario_manifiesto(driver, codigo)
@@ -416,7 +392,7 @@ def ejecutar_manifiestos(driver, codigos, actualizar_estado_callback, pausa_even
                 logger.registrar_excepcion(codigo, e, "Error procesando manifiesto")
                 registrar_log_remesa(codigo, f"Excepción: {e}", campos if 'campos' in locals() else [])
                 actualizar_estado_callback(f"❌ Error en manifiesto {codigo}: {e}")
-                navegar_a_formulario(driver)
+                navegar_a_manifiestos(driver)
                 continue
 
         # MEJORA: Limpiar checkpoint al finalizar exitosamente
@@ -511,7 +487,7 @@ class ProcesadorParaleloManifiestos:
     def iniciar_todas(self):
         for sesion in self.sesiones:
             sesion.iniciar()
-            time.sleep(2)
+            time.sleep(5)  # Espaciar más el inicio para evitar saturación del servidor/CPU
     
     def pausar_todas(self):
         for s in self.sesiones:

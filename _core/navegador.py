@@ -19,7 +19,19 @@ def resource_path(relative_path):
 def crear_driver():
     chrome_options = Options()
     chrome_options.add_experimental_option("detach", True)
-
+    
+    # 🚀 Optimizaciones para múltiples sesiones
+    chrome_options.add_argument("--log-level=3")                 # Solo errores fatales
+    chrome_options.add_argument("--silent")                      # Menos ruido en consola
+    chrome_options.add_argument("--disable-gpu")                 # Reduce consumo de recursos
+    chrome_options.add_argument("--disable-extensions")          # Deshabilita extensiones (más ligero)
+    chrome_options.add_argument("--no-sandbox")                  # Estabilidad en algunos entornos
+    chrome_options.add_argument("--disable-dev-shm-usage")       # Evita problemas de memoria compartida
+    chrome_options.add_argument("--disable-notifications")       # Evita popups molestos
+    
+    # Silenciar logs de USB y otros mensajes de consola técnicos
+    chrome_options.add_experimental_option('excludeSwitches', ['enable-logging'])
+    
     if platform.system() == "Windows":
         driver_path = resource_path("drivers/chromedriver.exe")
     else:

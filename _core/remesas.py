@@ -867,7 +867,7 @@ class ProcesadorParalelo:
     def iniciar_todas(self):
         for sesion in self.sesiones:
             sesion.iniciar()
-            time.sleep(2)
+            time.sleep(5)  # Espaciar más el inicio para evitar saturación del servidor/CPU
     
     def pausar_todas(self):
         for s in self.sesiones:

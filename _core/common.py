@@ -17,8 +17,8 @@ URL_LOGIN = "https://rndc.mintransporte.gov.co/MenuPrincipal/tabid/204/language/
 URL_FORMULARIO_REMESAS = "https://rndc.mintransporte.gov.co/programasRNDC/creardocumento/tabid/69/ctl/CumplirRemesa/mid/396/procesoid/5/default.aspx"
 URL_FORMULARIO_MANIFIESTOS = "https://rndc.mintransporte.gov.co/programasRNDC/creardocumento/tabid/69/ctl/CumplirManifiesto/mid/396/procesoid/6/default.aspx"
 
-TIMEOUT_CORTO = 3
-TIMEOUT_MEDIO = 10
+TIMEOUT_CORTO = 5
+TIMEOUT_MEDIO = 40
 
 
 # ============================================================================
