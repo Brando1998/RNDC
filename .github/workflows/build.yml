@@ -67,6 +67,17 @@ jobs:
             $content = $content -replace 'VERSION_ACTUAL = ".*"', "VERSION_ACTUAL = `"$version`"" 
             Set-Content "_utils/actualizaciones.py" -Value $content
             echo "✅ Version updated in actualizaciones.py"
+            
+            git config --global user.name "GitHub Actions"
+            git config --global user.email "actions@github.com"
+            git add _utils/actualizaciones.py
+            # Comprobar si hay cambios para omitir error de git commit vacío
+            if (git diff --staged --quiet) {
+              echo "No changes in actualizaciones.py"
+            } else {
+              git commit -m "🤖 Auto-update VERSION_ACTUAL to v$version [skip ci]"
+              git push
+            }
           } else {
             echo "⚠ actualizaciones.py not found, skipping version update"
           }

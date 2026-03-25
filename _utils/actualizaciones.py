@@ -8,7 +8,7 @@ from packaging import version
 from tkinter import messagebox
 
 # Versión actual de tu aplicación
-VERSION_ACTUAL = "1.0.32"  # Actualiza esto con cada release
+VERSION_ACTUAL = "1.0.47"  # Actualiza esto con cada release
 
 # URL del último release en GitHub
 GITHUB_API_URL = "https://api.github.com/repos/Brando1998/RNDC/releases/latest"
