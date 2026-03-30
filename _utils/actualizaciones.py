@@ -4,6 +4,7 @@ Módulo para verificar actualizaciones de la aplicación al inicio.
 import requests
 import json
 import os
+import platform
 from packaging import version
 from tkinter import messagebox
 
@@ -27,12 +28,13 @@ def verificar_actualizacion():
             
             # Comparar versiones
             if version.parse(version_remota) > version.parse(VERSION_ACTUAL):
-                # Buscar el asset del ejecutable
+                # Buscar el asset según la plataforma
                 assets = data.get("assets", [])
+                asset_nombre = "app-windows.zip" if platform.system() == "Windows" else "app-linux.zip"
                 for asset in assets:
-                    if asset["name"].endswith(".zip") or asset["name"].endswith(".exe"):
+                    if asset["name"] == asset_nombre:
                         return True, version_remota, asset["browser_download_url"]
-                
+
                 return True, version_remota, data.get("html_url")
             
         return False, None, None
@@ -89,7 +91,8 @@ def obtener_version_chromedriver_local():
     """
     try:
         import subprocess
-        driver_path = os.path.join(".", "drivers", "chromedriver.exe")
+        driver_name = "chromedriver.exe" if platform.system() == "Windows" else "chromedriver"
+        driver_path = os.path.join(".", "drivers", driver_name)
         
         if os.path.exists(driver_path):
             result = subprocess.run(
