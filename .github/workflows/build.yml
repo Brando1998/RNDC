@@ -1,4 +1,4 @@
-name: Build EXE for Windows
+name: Build Executables
 
 on:
   push:
@@ -8,6 +8,10 @@ on:
 jobs:
   build-windows:
     runs-on: windows-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      tag: ${{ steps.version.outputs.tag }}
+      driver_version: ${{ steps.driver_version.outputs.version }}
 
     steps:
       - name: Checkout code
@@ -164,5 +168,72 @@ jobs:
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
           asset_path: ./dist/app.zip
-          asset_name: app.zip
+          asset_name: app-windows.zip
+          asset_content_type: application/zip
+
+  # ========== BUILD LINUX ==========
+  build-linux:
+    needs: build-windows
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install system dependencies
+        run: sudo apt-get install -y python3-tk
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Embed encrypted credentials into code
+        env:
+          RNDC_USUARIO: ${{ secrets.RNDC_USUARIO }}
+          RNDC_CONTRASENA: ${{ secrets.RNDC_CONTRASENA }}
+        run: |
+          encoded_user=$(echo -n "$RNDC_USUARIO" | base64)
+          encoded_pass=$(echo -n "$RNDC_CONTRASENA" | base64)
+          cat > _utils/credenciales_embed.py << EOF
+          # Archivo generado automáticamente en el build
+          USUARIO_EMBEBIDO = "$encoded_user"
+          CONTRASENA_EMBEBIDA = "$encoded_pass"
+          EOF
+          echo "✅ Credenciales embebidas en código"
+
+      - name: Build executable
+        run: |
+          pyinstaller --onefile --noconsole \
+            --add-data "drivers/chromedriver:drivers" \
+            app.py
+
+      - name: Compress executable
+        run: zip -j dist/app-linux.zip dist/app
+
+      - name: Get executable info
+        id: exe_info
+        run: |
+          size=$(du -sh dist/app | cut -f1)
+          echo "size=$size" >> $GITHUB_OUTPUT
+          echo "Executable size: $size"
+
+      - name: Upload Linux Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.build-windows.outputs.upload_url }}
+          asset_path: ./dist/app-linux.zip
+          asset_name: app-linux.zip
           asset_content_type: application/zip
