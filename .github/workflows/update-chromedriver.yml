@@ -8,7 +8,7 @@ on:
 
 jobs:
   check-and-update:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
@@ -16,70 +16,69 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Get current ChromeDriver version
+      - name: Get current stored version
         id: current_version
-        shell: pwsh
         run: |
-          if (Test-Path "drivers/chromedriver.exe") {
-            $version = (Get-Item "drivers/chromedriver.exe").VersionInfo.FileVersion
-            echo "version=$version" >> $env:GITHUB_OUTPUT
-          } else {
-            echo "version=0.0.0.0" >> $env:GITHUB_OUTPUT
-          }
+          if [ -f "drivers/version.txt" ]; then
+            version=$(cat drivers/version.txt)
+          else
+            version="0.0.0.0"
+          fi
+          echo "version=$version" >> $GITHUB_OUTPUT
 
       - name: Get latest Chrome version
         id: chrome_version
-        shell: pwsh
         run: |
-          # Obtener la última versión estable de Chrome
-          $response = Invoke-RestMethod -Uri "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json"
-          $latestVersion = $response.channels.Stable.version
-          echo "Latest Chrome version: $latestVersion"
-          echo "version=$latestVersion" >> $env:GITHUB_OUTPUT
+          latest=$(curl -s "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin)['channels']['Stable']['version'])")
+          echo "Latest Chrome version: $latest"
+          echo "version=$latest" >> $GITHUB_OUTPUT
 
-      - name: Download new ChromeDriver if needed
+      - name: Download ChromeDriver for Windows and Linux
         id: download
-        shell: pwsh
         run: |
-          $currentVersion = "${{ steps.current_version.outputs.version }}"
-          $latestVersion = "${{ steps.chrome_version.outputs.version }}"
+          current="${{ steps.current_version.outputs.version }}"
+          latest="${{ steps.chrome_version.outputs.version }}"
 
-          echo "Current ChromeDriver version: $currentVersion"
-          echo "Latest Chrome version: $latestVersion"
+          echo "Current ChromeDriver version: $current"
+          echo "Latest Chrome version: $latest"
 
-          if ($currentVersion -ne $latestVersion) {
+          if [ "$current" != "$latest" ]; then
             echo "Nueva versión disponible. Descargando..."
-            
-            # Descargar ChromeDriver
-            $url = "https://storage.googleapis.com/chrome-for-testing-public/$latestVersion/win64/chromedriver-win64.zip"
-            Invoke-WebRequest -Uri $url -OutFile "chromedriver.zip"
-            
-            # Extraer
-            Expand-Archive -Path "chromedriver.zip" -DestinationPath "temp" -Force
-            
-            # Reemplazar el driver antiguo
-            if (-not (Test-Path "drivers")) {
-              New-Item -ItemType Directory -Path "drivers"
-            }
-            Copy-Item "temp/chromedriver-win64/chromedriver.exe" "drivers/chromedriver.exe" -Force
-            
-            # Limpiar
-            Remove-Item "chromedriver.zip"
-            Remove-Item "temp" -Recurse -Force
-            
-            echo "updated=true" >> $env:GITHUB_OUTPUT
-            echo "new_version=$latestVersion" >> $env:GITHUB_OUTPUT
-          } else {
+
+            mkdir -p drivers temp
+
+            # Windows (win64)
+            curl -L "https://storage.googleapis.com/chrome-for-testing-public/$latest/win64/chromedriver-win64.zip" \
+              -o temp/chromedriver-win64.zip
+            unzip -o temp/chromedriver-win64.zip -d temp/win64
+            cp temp/win64/chromedriver-win64/chromedriver.exe drivers/chromedriver.exe
+
+            # Linux (linux64)
+            curl -L "https://storage.googleapis.com/chrome-for-testing-public/$latest/linux64/chromedriver-linux64.zip" \
+              -o temp/chromedriver-linux64.zip
+            unzip -o temp/chromedriver-linux64.zip -d temp/linux64
+            cp temp/linux64/chromedriver-linux64/chromedriver drivers/chromedriver
+            chmod +x drivers/chromedriver
+
+            # Guardar versión para futuras comparaciones
+            echo "$latest" > drivers/version.txt
+
+            rm -rf temp
+
+            echo "updated=true" >> $GITHUB_OUTPUT
+            echo "new_version=$latest" >> $GITHUB_OUTPUT
+          else
             echo "ChromeDriver ya está actualizado"
-            echo "updated=false" >> $env:GITHUB_OUTPUT
-          }
+            echo "updated=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Commit and push if changed
         if: steps.download.outputs.updated == 'true'
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
-          git add drivers/chromedriver.exe
+          git add drivers/chromedriver.exe drivers/chromedriver drivers/version.txt
           git commit -m "🤖 Auto-update ChromeDriver to v${{ steps.download.outputs.new_version }}"
           git push
 
