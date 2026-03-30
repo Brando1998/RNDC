@@ -8,7 +8,7 @@ from packaging import version
 from tkinter import messagebox
 
 # Versión actual de tu aplicación
-VERSION_ACTUAL = "1.0.57"  # Actualiza esto con cada release
+VERSION_ACTUAL = "1.0.58"  # Actualiza esto con cada release
 
 # URL del último release en GitHub
 GITHUB_API_URL = "https://api.github.com/repos/Brando1998/RNDC/releases/latest"
@@ -113,4 +113,5 @@ if __name__ == "__main__":
     print(f"Versión actual: {VERSION_ACTUAL}")
     print(f"ChromeDriver local: {obtener_version_chromedriver_local()}")
     verificar_al_iniciar(mostrar_si_actualizado=True)
+
 
